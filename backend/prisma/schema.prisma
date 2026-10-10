@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ResourceType {
+  TOOL
+  DOCUMENTATION
+  LIBRARY
+  GUIDE
+  COURSE
+  ROADMAP
+  ARTICLE
+  COMMUNITY
+  REPOSITORY
+  OTHER
+}
+
+enum ResourceStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
+  id       String   @id @default(cuid())
+  name     String
+  email    String   @unique
+  password String
+  role     UserRole @default(USER)
+
+  resources      Resource[]
+  savedResources SavedResource[]
+  collections    Collection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Resource {
+  id          String         @id @default(cuid())
+  title       String
+  slug        String         @unique
+  url         String         @unique
+  description String?
+  type        ResourceType   @default(OTHER)
+  status      ResourceStatus @default(PENDING)
+
+  logoUrl         String?
+  faviconUrl      String?
+  previewImageUrl String?
+
+  domain String?
+  notes  String?
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  submittedById String?
+  submittedBy   User?   @relation(fields: [submittedById], references: [id], onDelete: SetNull)
+
+  tags        ResourceTag[]
+  savedBy     SavedResource[]
+  collections CollectionResource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+
+  parentId String?
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryHierarchy")
+
+  resources Resource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  resources ResourceTag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ResourceTag {
+  resourceId String
+  tagId      String
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, tagId])
+  @@index([tagId])
+}
+
+model SavedResource {
+  userId     String
+  resourceId String
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, resourceId])
+  @@index([resourceId])
+}
+
+model Collection {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String
+  description String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  resources CollectionResource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, slug])
+  @@index([userId])
+}
+
+model CollectionResource {
+  collectionId String
+  resourceId   String
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  resource   Resource   @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([collectionId, resourceId])
+  @@index([resourceId])
+}

@@ -1,0 +1,132 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ApiError, login, register } from "@/lib/api";
+import { Navbar } from "@/components/layout/navbar";
+import { SiteFooter } from "@/components/layout/site-footer";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    const confirmPassword = String(form.get("confirmPassword") ?? "");
+    if (mode === "register" && password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      if (mode === "register") {
+        await register({
+          name: String(form.get("name") ?? "").trim(),
+          email,
+          password,
+        });
+        setMode("login");
+        setSuccess("Account created. You can now sign in.");
+      } else {
+        await login({ email, password });
+        router.push("/");
+      }
+    } catch (requestError) {
+      setError(
+        requestError instanceof ApiError
+          ? requestError.message
+          : "Authentication failed. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
+      <Navbar />
+      <main className="mx-auto w-full max-w-[1000px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]"><Link href="/">Home</Link><span>›</span><strong className="text-[var(--text)]">{mode === "login" ? "Sign in" : "Create account"}</strong>
+        </div>
+        <div className="grid items-start gap-10 py-12 lg:grid-cols-[1fr_420px] lg:py-20">
+          <div className="max-w-lg">
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--blue)]">WELCOME TO SWEPACK</p>
+            <h1 className="text-4xl font-bold leading-tight tracking-[-0.06em] sm:text-5xl">Keep your best tools within reach.</h1>
+            <p className="mt-5 max-w-md text-sm leading-6 text-[var(--muted)]">Sign in to save resources, build collections, and share the finds worth passing on.</p>
+          </div>
+          <form className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm sm:p-8" onSubmit={handleSubmit}>
+          <div className="mb-6">
+            <h2 className="text-xl font-bold tracking-tight">{mode === "login" ? "Sign in to SWEPack" : "Create your account"}</h2>
+            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+              Sign in to save resources and submit resources for review.
+            </p>
+          </div>
+          {mode === "register" && (
+            <label className="mt-4 grid gap-2 text-xs font-semibold">
+              Name
+              <input className="h-11 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-normal outline-none focus:border-[var(--blue)]" name="name" required maxLength={100} />
+            </label>
+          )}
+          <label className="mt-4 grid gap-2 text-xs font-semibold">
+            Email
+            <input className="h-11 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-normal outline-none focus:border-[var(--blue)]" name="email" type="email" required />
+          </label>
+          <label className="mt-4 grid gap-2 text-xs font-semibold">
+            Password
+            <input className="h-11 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-normal outline-none focus:border-[var(--blue)]" name="password" type="password" minLength={8} required />
+          </label>
+          {mode === "register" && (
+            <label className="mt-4 grid gap-2 text-xs font-semibold">
+              Confirm password
+              <input
+                className="h-11 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-normal outline-none focus:border-[var(--blue)]"
+                name="confirmPassword"
+                type="password"
+                minLength={8}
+                required
+              />
+            </label>
+          )}
+          {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700" role="alert">{error}</p>}
+          {success && <p className="mt-4 rounded-lg bg-green-50 p-3 text-xs text-green-700" role="status">{success}</p>}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Link className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--line)] px-4 text-xs font-semibold hover:bg-[var(--surface-muted)]" href="/">
+              Back to resources
+            </Link>
+            <button className="inline-flex h-10 items-center justify-center rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:bg-blue-700" disabled={isSubmitting}>
+              {isSubmitting
+                ? "Please wait…"
+                : mode === "login"
+                  ? "Sign in"
+                  : "Create account"}
+            </button>
+          </div>
+          <button
+            className="mt-3 h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-muted)]"
+            type="button"
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login");
+              setError("");
+              setSuccess("");
+            }}
+          >
+            {mode === "login"
+              ? "Create a new account"
+              : "Already have an account? Sign in"}
+          </button>
+          </form>
+        </div>
+      </main>
+      <SiteFooter />
+    </div>
+  );
+}
