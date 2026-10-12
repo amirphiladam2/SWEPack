@@ -191,6 +191,32 @@ describe('ResourcesService', () => {
     );
   });
 
+  it('reports duplicate resource submissions as conflicts', async () => {
+    prismaMock.resource.findUnique.mockResolvedValue(null);
+    prismaMock.resource.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: '7.10.0',
+          meta: { target: ['url'] },
+        },
+      ),
+    );
+
+    await expect(
+      service.create(
+        {
+          title: 'Existing Resource',
+          url: 'https://example.com/existing',
+        },
+        'user-123',
+      ),
+    ).rejects.toThrow(
+      'A resource with this URL or title already exists.',
+    );
+  });
+
   // RESOURCE UPDATES
 
   it('replaces existing tag associations when tagIds are provided', async () => {

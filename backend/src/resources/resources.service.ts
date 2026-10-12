@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateResourceDto } from './dto/create-resource.dto';
@@ -8,6 +14,8 @@ import { ResourceStatus } from 'generated/prisma/enums';
 
 @Injectable()
 export class ResourcesService {
+  private readonly logger = new Logger(ResourcesService.name);
+
   constructor(private readonly prisma: PrismaService) { }
   private generateSlug(title: string): string {
     return title
@@ -120,7 +128,7 @@ export class ResourcesService {
     const { categoryId, tagIds, ...resourceData } = createResourceDto;
 
     try {
-      return await this.prisma.resource.create({
+      const resource = await this.prisma.resource.create({
         data: {
           ...resourceData,
 
@@ -161,11 +169,17 @@ export class ResourcesService {
           },
         },
       });
+      this.logger.log('Resource submission created with PENDING status.');
+      return resource;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
+        const target = Array.isArray(error.meta?.target)
+          ? error.meta.target.join(', ')
+          : 'unknown unique constraint';
+        this.logger.warn(`Resource submission conflict: ${target}.`);
         throw new ConflictException(
           'A resource with this URL or title already exists.',
         );
