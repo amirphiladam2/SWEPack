@@ -1,4 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
+
+jest.mock('../auth/jwt-auth.guard', () => ({
+  JwtAuthGuard: class JwtAuthGuard {},
+}));
+
 import { CategoriesController } from './categories.controller';
 import { CategoriesService } from './categories.service';
 
