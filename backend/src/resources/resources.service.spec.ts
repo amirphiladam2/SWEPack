@@ -199,7 +199,7 @@ describe('ResourcesService', () => {
         {
           code: 'P2002',
           clientVersion: '7.10.0',
-          meta: { target: ['url'] },
+          meta: { target: 'Resource_url_key' },
         },
       ),
     );
@@ -213,7 +213,58 @@ describe('ResourcesService', () => {
         'user-123',
       ),
     ).rejects.toThrow(
-      'A resource with this URL or title already exists.',
+      'A resource with this URL already exists.',
+    );
+  });
+
+  it('reports generated-slug conflicts as title conflicts', async () => {
+    prismaMock.resource.findUnique.mockResolvedValue(null);
+    prismaMock.resource.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: '7.10.0',
+          meta: { target: ['slug'] },
+        },
+      ),
+    );
+
+    await expect(
+      service.create(
+        {
+          title: 'Existing Resource',
+          url: 'https://example.com/another',
+        },
+        'user-123',
+      ),
+    ).rejects.toThrow('A resource with this title already exists.');
+  });
+
+  it('uses a generic message for unrelated unique conflicts', async () => {
+    prismaMock.resource.findUnique.mockResolvedValue(null);
+    prismaMock.resource.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: '7.10.0',
+          meta: { target: 'ResourceTag_resourceId_tagId_key' },
+        },
+      ),
+    );
+
+    await expect(
+      service.create(
+        {
+          title: 'Existing Resource',
+          url: 'https://example.com/other',
+          tagIds: ['tag-1', 'tag-1'],
+        },
+        'user-123',
+      ),
+    ).rejects.toThrow(
+      'A resource could not be created because a unique value already exists.',
     );
   });
 

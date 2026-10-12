@@ -17,6 +17,46 @@ export class ResourcesService {
   private readonly logger = new Logger(ResourcesService.name);
 
   constructor(private readonly prisma: PrismaService) { }
+
+  private getUniqueConstraintFields(
+    error: Prisma.PrismaClientKnownRequestError,
+  ): string[] {
+    const target = error.meta?.target;
+
+    if (typeof target === 'string') {
+      return [target];
+    }
+
+    if (
+      Array.isArray(target) &&
+      target.every((field): field is string => typeof field === 'string')
+    ) {
+      return target;
+    }
+
+    return [];
+  }
+
+  private getCreateConflictMessage(fields: string[]): string {
+    const normalizedFields = fields.map((field) => field.toLowerCase());
+    const hasUrlConflict = normalizedFields.some(
+      (field) => field === 'url' || field.includes('resource_url_key'),
+    );
+    const hasSlugConflict = normalizedFields.some(
+      (field) => field === 'slug' || field.includes('resource_slug_key'),
+    );
+
+    if (hasUrlConflict) {
+      return 'A resource with this URL already exists.';
+    }
+
+    if (hasSlugConflict) {
+      return 'A resource with this title already exists.';
+    }
+
+    return 'A resource could not be created because a unique value already exists.';
+  }
+
   private generateSlug(title: string): string {
     return title
       .toLowerCase()
@@ -176,13 +216,16 @@ export class ResourcesService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        const target = Array.isArray(error.meta?.target)
-          ? error.meta.target.join(', ')
-          : 'unknown unique constraint';
-        this.logger.warn(`Resource submission conflict: ${target}.`);
-        throw new ConflictException(
-          'A resource with this URL or title already exists.',
+        const fields = this.getUniqueConstraintFields(error);
+        const target = fields.length > 0 ? fields.join(', ') : 'unknown';
+        this.logger.warn(
+          `Resource submission conflict: ${target}; ` +
+            `hasTitle=${Boolean(createResourceDto.title)}; ` +
+            `hasUrl=${Boolean(createResourceDto.url)}; ` +
+            `hasCategory=${Boolean(categoryId)}; ` +
+            `tagCount=${tagIds?.length ?? 0}.`,
         );
+        throw new ConflictException(this.getCreateConflictMessage(fields));
       }
 
       throw error;
