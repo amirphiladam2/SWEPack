@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ResourcesService } from './resources.service';
 import { CreateResourceDto } from './dto/create-resource.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
+import { AdminResourceQueryDto } from './dto/admin-resource-query.dto';
 
 import { UpdateResourceDto } from './dto/update-resource.dto';
 
@@ -55,6 +56,21 @@ export class ResourcesController {
   findSaved(@CurrentUser() user: AuthenticatedUser) {
     return this.resourcesService.findSaved(user.userId);
   }
+
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  findAllForAdmin(@Query() query: AdminResourceQueryDto) {
+    return this.resourcesService.findAllForAdmin(query);
+  }
+
+  @Get('admin/summary')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  getAdminSummary() {
+    return this.resourcesService.getAdminSummary();
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(@Param('id') id: string) {

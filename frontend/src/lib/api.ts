@@ -4,6 +4,8 @@ import type {
   BackendCollection,
   BackendResource,
   BackendTag,
+  AdminResourceListResponse,
+  AdminResourceSummary,
   LoginInput,
   RegisterInput,
   ResourceListResponse,
@@ -130,6 +132,91 @@ export function submitResource(submission: ResourceSubmission) {
   return request<BackendResource>("/resources", {
     method: "POST",
     body: JSON.stringify(submission),
+  }, true);
+}
+
+export function fetchCurrentUser() {
+  return request<AuthResponse["user"]>("/auth/me", {}, true);
+}
+
+export function fetchAdminResources(search = "", status = "", page = 1) {
+  const params = new URLSearchParams({ page: String(page), limit: "20" });
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
+  return request<AdminResourceListResponse>(
+    `/resources/admin?${params.toString()}`,
+    {},
+    true,
+  );
+}
+
+export function fetchAdminSummary() {
+  return request<AdminResourceSummary>("/resources/admin/summary", {}, true);
+}
+
+export function updateResourceStatus(
+  id: string,
+  status: BackendResource["status"],
+) {
+  return request<BackendResource>(`/resources/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  }, true);
+}
+
+export function updateResource(id: string, input: Partial<ResourceSubmission>) {
+  return request<BackendResource>(`/resources/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function deleteResource(id: string) {
+  return request<BackendResource>(`/resources/${id}`, {
+    method: "DELETE",
+  }, true);
+}
+
+export function createCategory(input: { name: string; description?: string }) {
+  return request<BackendCategory>("/categories", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function updateCategory(
+  id: string,
+  input: { name?: string; description?: string },
+) {
+  return request<BackendCategory>(`/categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function deleteCategory(id: string) {
+  return request<BackendCategory>(`/categories/${id}`, {
+    method: "DELETE",
+  }, true);
+}
+
+export function createTag(input: { name: string }) {
+  return request<BackendTag>("/tags", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function updateTag(id: string, input: { name?: string }) {
+  return request<BackendTag>(`/tags/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }, true);
+}
+
+export function deleteTag(id: string) {
+  return request<BackendTag>(`/tags/${id}`, {
+    method: "DELETE",
   }, true);
 }
 

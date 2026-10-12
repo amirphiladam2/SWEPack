@@ -57,6 +57,16 @@ export type ResourceListResponse = {
   };
 };
 
+export type AdminResourceSummary = {
+  total: number;
+  pending: number;
+  published: number;
+  rejected: number;
+  archived: number;
+};
+
+export type AdminResourceListResponse = ResourceListResponse;
+
 export type LoginInput = {
   email: string;
   password: string;

@@ -77,6 +77,24 @@ The database migration must already be applied. The command does not reset,
 drop, or delete data. Verify the result with the public `GET /categories` and
 `GET /tags` endpoints.
 
+### Bootstrap the first admin account
+
+Use the controlled bootstrap script from the `backend` directory with the
+Railway production connection string and admin values supplied through the
+shell or a secure operational environment. Never commit or print them:
+
+```powershell
+$env:SEED_TARGET = "railway-production"
+$env:ADMIN_NAME = "Your Admin Name"
+$env:ADMIN_EMAIL = "admin@example.com"
+$env:ADMIN_PASSWORD = "<strong password>"
+npm run bootstrap:admin
+```
+
+The script upserts only the specified email, sets its role to `ADMIN`, hashes
+the password, and refuses local or non-Railway database URLs. It does not
+change public registration or expose an admin-promotion endpoint.
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:

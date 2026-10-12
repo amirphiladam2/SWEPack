@@ -11,6 +11,7 @@ import { CreateResourceDto } from './dto/create-resource.dto';
 import { UpdateResourceDto } from './dto/update-resource.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
 import { ResourceStatus } from 'generated/prisma/enums';
+import { AdminResourceQueryDto } from './dto/admin-resource-query.dto';
 
 @Injectable()
 export class ResourcesService {
@@ -161,6 +162,58 @@ export class ResourcesService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async findAllForAdmin(query: AdminResourceQueryDto) {
+    const { search, status, page = 1, limit = 20 } = query;
+    const where = {
+      ...(status && { status }),
+      ...(search && {
+        OR: [
+          { title: { contains: search, mode: 'insensitive' as const } },
+          { url: { contains: search, mode: 'insensitive' as const } },
+        ],
+      }),
+    };
+
+    const [resources, total] = await this.prisma.$transaction([
+      this.prisma.resource.findMany({
+        where,
+        include: {
+          category: true,
+          tags: { include: { tag: true } },
+          submittedBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.resource.count({ where }),
+    ]);
+
+    return {
+      data: resources,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getAdminSummary() {
+    const [total, pending, published, rejected, archived] = await Promise.all([
+      this.prisma.resource.count(),
+      this.prisma.resource.count({ where: { status: 'PENDING' } }),
+      this.prisma.resource.count({ where: { status: 'PUBLISHED' } }),
+      this.prisma.resource.count({ where: { status: 'REJECTED' } }),
+      this.prisma.resource.count({ where: { status: 'ARCHIVED' } }),
+    ]);
+
+    return { total, pending, published, rejected, archived };
   }
 
 

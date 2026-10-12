@@ -32,6 +32,9 @@ export function Navbar() {
         <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/login") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/login" onClick={() => setIsMenuOpen(false)}>
           Sign in
         </Link>
+        <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/admin") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/admin" onClick={() => setIsMenuOpen(false)}>
+          Admin
+        </Link>
       </nav>
       <div className="flex items-center gap-2">
         <ThemeToggle />
