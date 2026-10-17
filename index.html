@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resource Manager Website</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+      padding: 0.6rem 0.7rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+    }
+
+    button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    #filter {
+      width: 220px;
+      margin-bottom: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+    }
+
+    th,
+    td {
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0.65rem;
+    }
+
+    .action-button {
+      background: #dc2626;
+      padding: 0.45rem 0.65rem;
+    }
+
+    .action-button:hover {
+      background: #b91c1c;
+    }
+
+    .empty {
+      font-style: italic;
+      color: #6b7280;
+    }
+
+    @media (max-width: 800px) {
+      form {
+        grid-template-columns: 1fr;
+      }
+
+      #filter {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Resource Manager Website</h1>
+    <p>Add, categorize, and manage useful resources.</p>
+
+    <form id="resource-form" autocomplete="off">
+      <input id="name" name="name" type="text" placeholder="Resource name" required />
+      <input id="url" name="url" type="url" placeholder="https://example.com" required />
+      <select id="type" name="type" required>
+        <option value="">Select type</option>
+        <option value="Article">Article</option>
+        <option value="Video">Video</option>
+        <option value="Tool">Tool</option>
+      </select>
+      <button type="submit">Add</button>
+    </form>
+
+    <select id="filter" aria-label="Filter resources by type">
+      <option value="All">All types</option>
+      <option value="Article">Article</option>
+      <option value="Video">Video</option>
+      <option value="Tool">Tool</option>
+    </select>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Link</th>
+          <th>Type</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="resource-list"></tbody>
+    </table>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "resourceManager.items";
+
+    const form = document.getElementById("resource-form");
+    const list = document.getElementById("resource-list");
+    const filter = document.getElementById("filter");
+
+    const escapeHtml = (text) =>
+      text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+
+    const getResources = () => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const saveResources = (resources) => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(resources));
+    };
+
+    const render = () => {
+      const resources = getResources();
+      const selectedType = filter.value;
+      const filtered =
+        selectedType === "All"
+          ? resources
+          : resources.filter((resource) => resource.type === selectedType);
+
+      if (!filtered.length) {
+        list.innerHTML = '<tr><td class="empty" colspan="4">No resources found.</td></tr>';
+        return;
+      }
+
+      list.innerHTML = filtered
+        .map(
+          (resource) => `
+            <tr>
+              <td>${escapeHtml(resource.name)}</td>
+              <td><a href="${encodeURI(resource.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(resource.url)}</a></td>
+              <td>${escapeHtml(resource.type)}</td>
+              <td><button class="action-button" type="button" data-id="${resource.id}">Delete</button></td>
+            </tr>
+          `
+        )
+        .join("");
+    };
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const name = formData.get("name")?.toString().trim();
+      const url = formData.get("url")?.toString().trim();
+      const type = formData.get("type")?.toString().trim();
+
+      if (!name || !url || !type) {
+        return;
+      }
+
+      const resources = getResources();
+      resources.push({
+        id: crypto.randomUUID(),
+        name,
+        url,
+        type,
+      });
+
+      saveResources(resources);
+      form.reset();
+      render();
+    });
+
+    filter.addEventListener("change", render);
+
+    list.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) {
+        return;
+      }
+
+      const id = target.dataset.id;
+      if (!id) {
+        return;
+      }
+
+      const resources = getResources().filter((resource) => resource.id !== id);
+      saveResources(resources);
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
