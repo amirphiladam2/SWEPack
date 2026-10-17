@@ -82,6 +82,20 @@ export function login(input: LoginInput) {
   });
 }
 
+export function requestPasswordReset(email: string) {
+  return request<{ message: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(token: string, password: string) {
+  return request<{ message: string }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+}
+
 export function register(input: RegisterInput) {
   return request("/auth/register", {
     method: "POST",
@@ -128,10 +142,29 @@ export function fetchSavedResources() {
   return request<Array<{ resource: BackendResource }>>("/resources/saved", {}, true);
 }
 
+export function fetchMyResources() {
+  return request<BackendResource[]>("/resources/mine", {}, true);
+}
+
 export function submitResource(submission: ResourceSubmission) {
   return request<BackendResource>("/resources", {
     method: "POST",
     body: JSON.stringify(submission),
+  }, true);
+}
+
+export type ResourceMetadata = {
+  title?: string;
+  description?: string;
+  previewImageUrl?: string;
+  logoUrl?: string;
+  domain: string;
+};
+
+export function fetchResourceMetadata(url: string) {
+  return request<ResourceMetadata>("/resources/metadata", {
+    method: "POST",
+    body: JSON.stringify({ url }),
   }, true);
 }
 
@@ -241,6 +274,17 @@ export function fetchCollectionResources(id: string) {
   return request<Array<{ resource: BackendResource }>>(
     `/collections/${id}/resources`,
     {},
+    true,
+  );
+}
+
+export function addResourceToCollection(collectionId: string, resourceId: string) {
+  return request<{ collectionId: string; resourceId: string }>(
+    `/collections/${collectionId}/resources`,
+    {
+      method: "POST",
+      body: JSON.stringify({ resourceId }),
+    },
     true,
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   fetchResources,
   fetchSavedResources,
+  getAccessToken,
   saveResource as saveResourceRequest,
   unsaveResource,
 } from "@/lib/api";
@@ -12,77 +13,64 @@ import { toResourceViewModel, type Resource } from "@/types/resource";
 import type { ResourceListResponse } from "@/types/backend";
 
 export function useResources(query: string, categoryId: string, page: number) {
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [meta, setMeta] = useState<ResourceListResponse["meta"] | null>(null);
+  const queryClient = useQueryClient();
+  const resourcesQuery = useQuery({
+    queryKey: ["resources", { query, categoryId, page }],
+    queryFn: () => fetchResources(query, categoryId, page),
+    select: (response) => response,
+  });
+  const savedQuery = useQuery({
+    queryKey: ["saved-resources"],
+    queryFn: fetchSavedResources,
+    enabled: Boolean(getAccessToken()),
+    staleTime: 60_000,
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      setIsLoading(true);
-      setError(null);
-      setMeta(null);
-      try {
-        const response = await fetchResources(query, categoryId, page);
-        let savedIds = new Set<string>();
-        try {
-          const saved = await fetchSavedResources();
-          savedIds = new Set(saved.map(({ resource }) => resource.id));
-        } catch (savedError) {
-          if (!(savedError instanceof ApiError) || savedError.status !== 401) {
-            throw savedError;
-          }
-        }
-        if (!controller.signal.aborted) {
-          setResources(
-            response.data.map((resource) =>
-              toResourceViewModel(resource, savedIds),
-            ),
-          );
-          setMeta(response.meta);
-        }
-      } catch (requestError) {
-        if (!controller.signal.aborted)
-          setError(
-            requestError instanceof ApiError
-              ? requestError.message
-              : "We couldn’t load resources. Check that the API is running.",
-          );
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
-      }
-    }, 200);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [query, categoryId, page]);
-
-  const saveResource = useCallback(
-    async (id: string) => {
-      const snapshot = resources;
-      setResources((current) =>
-        current.map((item) =>
-          item.id === id ? { ...item, saved: !item.saved } : item,
-        ),
-      );
-      const item = snapshot.find((resource) => resource.id === id);
-      if (!item) return;
-      try {
-        if (item.saved) await unsaveResource(id);
-        else await saveResourceRequest(id);
-      } catch (requestError) {
-        setResources(snapshot);
-        setError(
-          requestError instanceof ApiError && requestError.status === 401
-            ? "Please sign in to save resources."
-            : "That resource could not be saved. Please try again.",
-        );
-      }
+  const saveMutation = useMutation({
+    mutationFn: async ({ id, saved }: { id: string; saved: boolean }) => {
+      if (saved) return unsaveResource(id);
+      return saveResourceRequest(id);
     },
-    [resources],
+    onSuccess: (_, { id, saved }) => {
+      queryClient.setQueryData(["saved-resources"], (current:
+        Array<{ resource: { id: string } }> | undefined) => {
+        const items = current ?? [];
+        if (saved) return items.filter(({ resource }) => resource.id !== id);
+        return items;
+      });
+      void queryClient.invalidateQueries({ queryKey: ["saved-resources"] });
+    },
+  });
+
+  const savedIds = new Set(
+    (savedQuery.data ?? []).map(({ resource }) => resource.id),
+  );
+  const response = resourcesQuery.data as ResourceListResponse | undefined;
+  const resources: Resource[] = (response?.data ?? []).map((resource) =>
+    toResourceViewModel(resource, savedIds),
   );
 
-  return { resources, isLoading, error, meta, saveResource };
+  async function saveResource(id: string) {
+    const item = resources.find((resource) => resource.id === id);
+    if (!item || saveMutation.isPending) return;
+    await saveMutation.mutateAsync({ id, saved: item.saved });
+  }
+
+  const queryError =
+    resourcesQuery.error ??
+    (savedQuery.error instanceof ApiError && savedQuery.error.status === 401
+      ? null
+      : savedQuery.error);
+  return {
+    resources,
+    isLoading: resourcesQuery.isPending,
+    error:
+      queryError instanceof ApiError
+        ? queryError.message
+        : queryError
+          ? "We couldn’t load resources. Check that the API is running."
+          : null,
+    meta: response?.meta ?? null,
+    saveResource,
+  };
 }

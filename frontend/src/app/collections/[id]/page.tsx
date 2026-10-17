@@ -3,9 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { ApiError, fetchCollectionResources, fetchCollections } from "@/lib/api";
-import { Navbar } from "@/components/layout/navbar";
-import { SiteFooter } from "@/components/layout/site-footer";
 import { toResourceViewModel, type Resource } from "@/types/resource";
 
 export default function CollectionDetailPage() {
@@ -37,10 +36,8 @@ export default function CollectionDetailPage() {
   }, [params.id]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
-      <Navbar />
-      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
-        <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]"><Link href="/collections">Collections</Link><span>›</span><strong className="text-[var(--text)]">{collectionName}</strong>
+    <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="flex items-center gap-1 text-[11px] text-[var(--muted)]"><Link href="/collections">Collections</Link><ChevronRight size={13} /><strong className="text-[var(--text)]">{collectionName}</strong>
         </div>
         <header className="flex flex-col justify-between gap-6 py-12 sm:flex-row sm:items-end sm:py-16">
           <div>
@@ -88,8 +85,6 @@ export default function CollectionDetailPage() {
             ))}
           </div>
         )}
-      </main>
-      <SiteFooter />
-    </div>
+    </main>
   );
 }

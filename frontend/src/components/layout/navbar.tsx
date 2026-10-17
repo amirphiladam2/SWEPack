@@ -1,22 +1,47 @@
 "use client";
 
-import { Menu, User, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Boxes, LogOut, Menu, Plus, User, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import {
+  clearAccessToken,
+  fetchCurrentUser,
+  getAccessToken,
+} from "@/lib/api";
 
 export function Navbar() {
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const currentUserQuery = useQuery({
+    queryKey: ["current-user"],
+    queryFn: fetchCurrentUser,
+    enabled: Boolean(getAccessToken()),
+    retry: false,
+  });
+  const currentUser = currentUserQuery.data;
 
   function isActive(path: string) {
     return path === "/" ? pathname === "/" : pathname.startsWith(path);
   }
 
+  function signOut() {
+    clearAccessToken();
+    queryClient.removeQueries({ queryKey: ["current-user"] });
+    queryClient.removeQueries({ queryKey: ["saved-resources"] });
+    setIsAccountMenuOpen(false);
+    setIsMenuOpen(false);
+  }
+
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[var(--line)] bg-[var(--bg)] px-5 sm:px-8">
-      <Link className="text-base font-bold tracking-[-0.05em] text-[var(--text)]" href="/">
+    <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[var(--header)] px-5 backdrop-blur-xl sm:px-8">
+      <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between">
+      <Link className="flex items-center gap-2.5 text-base font-extrabold tracking-[-0.055em] text-[var(--text)]" href="/">
+        <span className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--blue)] text-white"><Boxes size={18} /></span>
         SWEPack
       </Link>
       <nav className={`${isMenuOpen ? "flex" : "hidden"} absolute inset-x-0 top-full flex-col gap-1 border-b border-[var(--line)] bg-[var(--bg)] p-3 shadow-lg sm:static sm:flex sm:h-full sm:flex-row sm:items-center sm:gap-6 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none`} aria-label="Main navigation">
@@ -29,18 +54,59 @@ export function Navbar() {
         <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/submit") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/submit" onClick={() => setIsMenuOpen(false)}>
           Submit a link
         </Link>
-        <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/login") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/login" onClick={() => setIsMenuOpen(false)}>
-          Sign in
-        </Link>
+        {!currentUserQuery.isPending && !currentUser && (
+          <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/login") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/login" onClick={() => setIsMenuOpen(false)}>
+            Sign in
+          </Link>
+        )}
         <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/admin") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/admin" onClick={() => setIsMenuOpen(false)}>
           Admin
         </Link>
       </nav>
       <div className="flex items-center gap-2">
+        <Link href="/submit" className="primary-action hidden h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-white sm:inline-flex"><Plus size={14} /> Add resource</Link>
         <ThemeToggle />
-        <button className="hidden h-9 w-9 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] sm:grid" aria-label="Open account menu">
-          <User size={16} />
-        </button>
+        {currentUser && (
+          <div className="relative hidden sm:block">
+            <button
+              className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--blue)]"
+              aria-expanded={isAccountMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Open account menu"
+              onClick={() => setIsAccountMenuOpen((open) => !open)}
+            >
+              <User size={16} />
+            </button>
+            {isAccountMenuOpen && (
+              <div
+                className="absolute right-0 top-11 z-30 w-64 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg"
+                role="menu"
+              >
+                <div className="border-b border-[var(--line)] px-3 py-2">
+                  <p className="truncate text-xs font-semibold">{currentUser.name}</p>
+                  <p className="truncate text-[11px] text-[var(--muted)]">{currentUser.email}</p>
+                </div>
+                {currentUser.role === "ADMIN" && (
+                  <Link
+                    className="mt-1 block rounded-lg px-3 py-2 text-xs font-semibold hover:bg-[var(--surface-muted)]"
+                    href="/admin"
+                    role="menuitem"
+                    onClick={() => setIsAccountMenuOpen(false)}
+                  >
+                    Admin console
+                  </Link>
+                )}
+                <button
+                  className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50"
+                  role="menuitem"
+                  onClick={signOut}
+                >
+                  <LogOut size={14} /> Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <button
           className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] sm:hidden"
           aria-expanded={isMenuOpen}
@@ -49,6 +115,7 @@ export function Navbar() {
         >
           {isMenuOpen ? <X size={17} /> : <Menu size={17} />}
         </button>
+      </div>
       </div>
     </header>
   );

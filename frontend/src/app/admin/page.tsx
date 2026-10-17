@@ -11,7 +11,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -31,8 +31,6 @@ import {
   updateResourceStatus,
   updateTag,
 } from "@/lib/api";
-import { Navbar } from "@/components/layout/navbar";
-import { SiteFooter } from "@/components/layout/site-footer";
 import {
   BackendCategory,
   BackendResource,
@@ -79,22 +77,18 @@ export default function AdminPage() {
   const [categoryDescription, setCategoryDescription] = useState("");
   const [tagName, setTagName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const resourceLoadId = useRef(0);
+  const hasLoadedInitialData = useRef(false);
 
   async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const [resourceResponse, resourceSummary, categoryItems, tagItems] =
-        await Promise.all([
-          fetchAdminResources(search, status),
-          fetchAdminSummary(),
-          fetchCategories(),
-          fetchTags(),
-        ]);
-      setResources(resourceResponse.data);
+      const [, resourceSummary] = await Promise.all([
+        loadResources(),
+        fetchAdminSummary(),
+      ]);
       setSummary(resourceSummary);
-      setCategories(categoryItems);
-      setTags(tagItems);
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 401) {
         router.push("/login");
@@ -107,6 +101,27 @@ export default function AdminPage() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadResources() {
+    const loadId = ++resourceLoadId.current;
+    const resourceResponse = await fetchAdminResources(search, status);
+    if (loadId === resourceLoadId.current) {
+      setResources(resourceResponse.data);
+    }
+  }
+
+  async function loadTaxonomy() {
+    try {
+      const [categoryItems, tagItems] = await Promise.all([
+        fetchCategories(),
+        fetchTags(),
+      ]);
+      setCategories(categoryItems);
+      setTags(tagItems);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
     }
   }
 
@@ -130,15 +145,46 @@ export default function AdminPage() {
   }, [router]);
 
   useEffect(() => {
-    if (isAdmin) void loadData();
-    // Search and status changes intentionally reload the admin list only.
+    queueMicrotask(() => {
+      if (isAdmin) {
+        hasLoadedInitialData.current = true;
+        void loadData();
+      }
+    });
+    // Initial access loads the summary and resource list together.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || !hasLoadedInitialData.current) return;
+    const timeout = window.setTimeout(() => {
+      setLoading(true);
+      setError("");
+      void loadResources()
+        .catch((requestError) => {
+          if (requestError instanceof ApiError && requestError.status === 401) {
+            router.push("/login");
+            return;
+          }
+          setError(
+            requestError instanceof ApiError && requestError.status === 403
+              ? "Your account does not have administrator access."
+              : errorMessage(requestError),
+          );
+        })
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => window.clearTimeout(timeout);
+    // Filter changes reload only the resource list after the user pauses.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, search, status]);
 
-  const pendingResources = useMemo(
-    () => resources.filter((resource) => resource.status === "PENDING"),
-    [resources],
-  );
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (isAdmin) void loadTaxonomy();
+    });
+    // Taxonomy is loaded once after access is confirmed.
+  }, [isAdmin]);
 
   async function changeStatus(resource: BackendResource, nextStatus: BackendResource["status"]) {
     setError("");
@@ -205,6 +251,7 @@ export default function AdminPage() {
       setCategoryName("");
       setCategoryDescription("");
       setNotice("Category saved.");
+      await loadTaxonomy();
       await loadData();
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -223,6 +270,7 @@ export default function AdminPage() {
       setEditingTag(null);
       setTagName("");
       setNotice("Tag saved.");
+      await loadTaxonomy();
       await loadData();
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -237,6 +285,7 @@ export default function AdminPage() {
       if (type === "category") await deleteCategory(id);
       else await deleteTag(id);
       setNotice(`${type === "category" ? "Category" : "Tag"} deleted.`);
+      await loadTaxonomy();
       await loadData();
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -244,24 +293,22 @@ export default function AdminPage() {
   }
 
   if (isCheckingAccess) {
-    return <AdminShell><LoadingState label="Checking administrator access…" /></AdminShell>;
+    return <LoadingState label="Checking administrator access…" />;
   }
 
   if (!isAdmin) {
     return (
-      <AdminShell>
-        <div className="mx-auto max-w-xl rounded-xl border border-red-200 bg-red-50 p-8 text-center text-sm text-red-700">
+      <div className="mx-auto max-w-xl rounded-xl border border-red-200 bg-red-50 p-8 text-center text-sm text-red-700">
           {error || "Administrator access is required."}
           <Link className="mt-5 inline-flex h-10 items-center rounded-lg border border-red-200 bg-white px-4 font-semibold" href="/">
             Back to resources
           </Link>
-        </div>
-      </AdminShell>
+      </div>
     );
   }
 
   return (
-    <AdminShell>
+    <>
       <main className="mx-auto w-full max-w-[1240px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -338,12 +385,8 @@ export default function AdminPage() {
         )}
       </main>
       {editingResource && <ResourceEditor resource={editingResource} categories={categories} onClose={() => setEditingResource(null)} onSubmit={saveResource} isSaving={isSaving} />}
-    </AdminShell>
+    </>
   );
-}
-
-function AdminShell({ children }: { children: React.ReactNode }) {
-  return <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]"><Navbar /><div className="flex-1">{children}</div><SiteFooter /></div>;
 }
 
 function LoadingState({ label }: { label: string }) {

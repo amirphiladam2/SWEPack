@@ -10,14 +10,14 @@ type Props = {
 
 export function FilterSidebar({ categories, tags, selected, onSelect, onTagSelect }: Props) {
   return (
-    <aside className="hidden pt-1 lg:block" aria-label="Resource filters">
+    <aside className="surface-card hidden rounded-2xl p-5 lg:block" aria-label="Resource filters">
       <div className="flex items-center justify-between border-b border-[var(--line)] pb-4 text-xs">
         <strong>Refine results</strong>
         <button className="text-xs text-[var(--blue)]" type="button" onClick={() => onSelect("")}>Clear all</button>
       </div>
-      <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">Categories</p>
+      <p className="mb-3 mt-5 text-[11px] font-bold uppercase tracking-wider text-[var(--muted)]">Categories</p>
       {categories.map(({ id, name, count }) => (
-        <label className="grid min-h-8 cursor-pointer grid-cols-[18px_1fr_auto] items-center gap-2 text-[13px]" key={id}>
+        <label className="grid min-h-9 cursor-pointer grid-cols-[18px_1fr_auto] items-center gap-2 rounded-lg px-1 text-[13px] transition hover:bg-[var(--surface-muted)]" key={id}>
           <input
             className="h-4 w-4 accent-[var(--blue)]"
             type="checkbox"

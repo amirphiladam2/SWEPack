@@ -1,14 +1,21 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ApiError, login, register } from "@/lib/api";
-import { Navbar } from "@/components/layout/navbar";
-import { SiteFooter } from "@/components/layout/site-footer";
+import { ApiError, fetchCurrentUser, getAccessToken, login, register } from "@/lib/api";
+import { ChevronRight } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const currentUserQuery = useQuery({
+    queryKey: ["current-user"],
+    queryFn: fetchCurrentUser,
+    enabled: Boolean(getAccessToken()),
+    retry: false,
+  });
   const [mode, setMode] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -37,8 +44,53 @@ export default function LoginPage() {
         setMode("login");
         setSuccess("Account created. You can now sign in.");
       } else {
-        await login({ email, password });
+        const response = await login({ email, password });
+        queryClient.setQueryData(["current-user"], response.user);
         router.push("/");
+      }
+
+      if (currentUserQuery.isPending) {
+        return (
+          <main className="mx-auto w-full max-w-[1000px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+            <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-[var(--line)] text-sm text-[var(--muted)]">
+              Checking your account…
+            </div>
+          </main>
+        );
+      }
+
+      if (currentUserQuery.data) {
+        return (
+          <main className="mx-auto w-full max-w-[1000px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+            <div className="mx-auto max-w-xl rounded-xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center shadow-sm">
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--blue)]">
+                ACCOUNT
+              </p>
+              <h1 className="text-2xl font-bold tracking-tight">
+                You’re already signed in
+              </h1>
+              <p className="mt-3 text-sm text-[var(--muted)]">
+                Signed in as {currentUserQuery.data.email}.
+              </p>
+              <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+                <Link
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:bg-blue-700"
+                  href="/"
+                >
+                  Browse resources
+                </Link>
+                {currentUserQuery.data.role === "ADMIN" && (
+                  <Link
+                    className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--line)] px-4 text-xs font-semibold hover:bg-[var(--surface-muted)]"
+                    href="/admin"
+                  >
+                    Open admin console
+                  </Link>
+                )}
+              </div>
+            </div>
+          </main>
+        );
       }
     } catch (requestError) {
       setError(
@@ -52,10 +104,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
-      <Navbar />
-      <main className="mx-auto w-full max-w-[1000px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
-        <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]"><Link href="/">Home</Link><span>›</span><strong className="text-[var(--text)]">{mode === "login" ? "Sign in" : "Create account"}</strong>
+    <main className="mx-auto w-full max-w-[1000px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="flex items-center gap-1 text-[11px] text-[var(--muted)]"><Link href="/">Home</Link><ChevronRight size={13} /><strong className="text-[var(--text)]">{mode === "login" ? "Sign in" : "Create account"}</strong>
         </div>
         <div className="grid items-start gap-10 py-12 lg:grid-cols-[1fr_420px] lg:py-20">
           <div className="max-w-lg">
@@ -110,6 +160,11 @@ export default function LoginPage() {
                   : "Create account"}
             </button>
           </div>
+          {mode === "login" && (
+            <Link className="mt-4 block text-center text-xs font-semibold text-[var(--blue)]" href="/forgot-password">
+              Forgot your password?
+            </Link>
+          )}
           <button
             className="mt-3 h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-muted)]"
             type="button"
@@ -125,8 +180,6 @@ export default function LoginPage() {
           </button>
           </form>
         </div>
-      </main>
-      <SiteFooter />
-    </div>
+    </main>
   );
 }

@@ -1,28 +1,53 @@
 "use client";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { ApiError, fetchCategories, fetchTags, submitResource } from "@/lib/api";
-import type { BackendCategory, BackendTag } from "@/types/backend";
+import {
+  ApiError,
+  fetchResourceMetadata,
+  fetchMyResources,
+  submitResource,
+} from "@/lib/api";
 import { resourceTypes } from "@/types/backend";
 import type { ResourceSubmission } from "@/types/submission";
+import { useTaxonomy } from "@/hooks/use-taxonomy";
 
 export function SubmitResourceForm() {
-  const [categories, setCategories] = useState<BackendCategory[]>([]);
-  const [tags, setTags] = useState<BackendTag[]>([]);
+  const { categories, tags } = useTaxonomy();
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
   >("idle");
   const [error, setError] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const [description, setDescription] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | undefined>();
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | undefined>();
+  const [metadataStatus, setMetadataStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [metadataMessage, setMetadataMessage] = useState("");
+  const [isTitleEdited, setIsTitleEdited] = useState(false);
+  const [isDescriptionEdited, setIsDescriptionEdited] = useState(false);
 
-  useEffect(() => {
-    Promise.all([fetchCategories(), fetchTags()])
-      .then(([categoryItems, tagItems]) => {
-        setCategories(categoryItems);
-        setTags(tagItems);
-      })
-      .catch(() => setError("We couldn't load submission options."));
-  }, []);
+  async function populateFromUrl() {
+    if (!url.trim() || !/^https?:\/\//i.test(url.trim())) return;
+    setMetadataStatus("loading");
+    setMetadataMessage("");
+    try {
+      const metadata = await fetchResourceMetadata(url.trim());
+      if (!isTitleEdited && metadata.title) setTitle(metadata.title);
+      if (!isDescriptionEdited && metadata.description) setDescription(metadata.description);
+      setLogoUrl(metadata.logoUrl);
+      setPreviewImageUrl(metadata.previewImageUrl);
+      setMetadataStatus("idle");
+    } catch (requestError) {
+      setMetadataStatus("error");
+      setMetadataMessage(
+        requestError instanceof ApiError
+          ? requestError.message
+          : "We couldn't fetch details for this URL.",
+      );
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,9 +62,11 @@ export function SubmitResourceForm() {
       return;
     }
     const submission: ResourceSubmission = {
-      title: String(form.get("title") ?? "").trim(),
-      url: String(form.get("url") ?? "").trim(),
-      description: String(form.get("description") ?? "").trim(),
+      title: title.trim(),
+      url: url.trim(),
+      description: description.trim(),
+      logoUrl,
+      previewImageUrl,
       type,
       categoryId: String(form.get("categoryId") ?? "") || undefined,
       tagIds: selectedTagIds,
@@ -48,15 +75,54 @@ export function SubmitResourceForm() {
       await submitResource(submission);
       event.currentTarget.reset();
       setSelectedTagIds([]);
+      setTitle("");
+      setUrl("");
+      setDescription("");
+      setLogoUrl(undefined);
+      setPreviewImageUrl(undefined);
+      setIsTitleEdited(false);
+      setIsDescriptionEdited(false);
       setStatus("success");
     } catch (requestError) {
+      try {
+        const submittedResources = await fetchMyResources();
+        const wasCreated = submittedResources.some(
+          (resource) => resource.url === submission.url,
+        );
+        if (wasCreated) {
+          event.currentTarget.reset();
+          setSelectedTagIds([]);
+          setTitle("");
+          setUrl("");
+          setDescription("");
+          setLogoUrl(undefined);
+          setPreviewImageUrl(undefined);
+          setIsTitleEdited(false);
+          setIsDescriptionEdited(false);
+          setStatus("success");
+          setError("");
+          return;
+        }
+      } catch (verificationError) {
+        setStatus("error");
+        setError(
+          requestError instanceof ApiError
+            ? requestError.message
+            : verificationError instanceof ApiError
+              ? verificationError.message
+              : "We couldn't verify whether the resource was submitted. Check the admin dashboard before trying again.",
+        );
+        return;
+      }
       setStatus("error");
       setError(
         requestError instanceof ApiError && requestError.status === 401
           ? "Please sign in before submitting a resource."
+          : requestError instanceof ApiError && requestError.status === 409
+            ? requestError.message
           : requestError instanceof ApiError
             ? requestError.message
-            : "We couldn't submit this resource. Please try again.",
+            : "The request may have timed out, but the resource may still have been submitted. Check the admin dashboard before trying again.",
       );
     }
   }
@@ -69,7 +135,7 @@ export function SubmitResourceForm() {
       </div>
       <label className="mt-4 grid gap-2 text-xs font-semibold">
         Resource name
-        <input className="h-11 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-normal outline-none focus:border-[var(--blue)]" name="title" required placeholder="e.g. shadcn/ui" />
+        <input className="h-11 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-normal outline-none focus:border-[var(--blue)]" name="title" required placeholder="e.g. shadcn/ui" value={title} onChange={(event) => { setTitle(event.target.value); setIsTitleEdited(true); }} />
       </label>
       <label className="mt-4 grid gap-2 text-xs font-semibold">
         Website URL
@@ -78,7 +144,12 @@ export function SubmitResourceForm() {
           type="url"
           required
           placeholder="https://example.com"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+          onBlur={() => void populateFromUrl()}
         />
+        {metadataStatus === "loading" && <span className="text-xs font-normal text-[var(--muted)]">Finding website details…</span>}
+        {metadataStatus === "error" && <span className="text-xs font-normal text-amber-700">{metadataMessage}</span>}
       </label>
       <label className="mt-4 grid gap-2 text-xs font-semibold">
         Short description
@@ -87,7 +158,10 @@ export function SubmitResourceForm() {
           required
           rows={4}
           placeholder="Tell the community what makes this resource useful."
+          value={description}
+          onChange={(event) => { setDescription(event.target.value); setIsDescriptionEdited(true); }}
         />
+        <span className="text-xs font-normal text-[var(--muted)]">We fill this from the website when available. You can edit it before submitting.</span>
       </label>
       <div className="grid gap-0 sm:grid-cols-2 sm:gap-4">
         <label className="mt-4 grid gap-2 text-xs font-semibold">

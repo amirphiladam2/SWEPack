@@ -1,57 +1,54 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { ApiError, createCollection, deleteCollection, fetchCollections } from "@/lib/api";
 import type { BackendCollection } from "@/types/backend";
-import { Navbar } from "@/components/layout/navbar";
-import { SiteFooter } from "@/components/layout/site-footer";
 import { CollectionCreateForm } from "@/components/collections/collection-create-form";
 import { CollectionList } from "@/components/collections/collection-list";
 
 export default function CollectionsPage() {
-  const [collections, setCollections] = useState<BackendCollection[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchCollections()
-      .then(setCollections)
-      .catch((requestError) => {
-        setError(
-          requestError instanceof ApiError && requestError.status === 401
-            ? "Sign in to create and manage collections."
-            : "We couldn't load your collections.",
-        );
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
+  const queryClient = useQueryClient();
+  const collectionsQuery = useQuery({
+    queryKey: ["collections"],
+    queryFn: fetchCollections,
+  });
+  const collections = collectionsQuery.data ?? [];
+  const createMutation = useMutation({
+    mutationFn: createCollection,
+    onSuccess: (collection) => {
+      queryClient.setQueryData<BackendCollection[]>(["collections"], (current = []) => [collection, ...current]);
+      setName("");
+      setDescription("");
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: deleteCollection,
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<BackendCollection[]>(["collections"], (current = []) => current.filter((item) => item.id !== id));
+    },
+  });
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    setIsSubmitting(true);
     try {
-      const collection = await createCollection({
+      await createMutation.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
       });
-      setCollections((current) => [collection, ...current]);
-      setName("");
-      setDescription("");
     } catch (requestError) {
       setError(
         requestError instanceof ApiError
           ? requestError.message
           : "We couldn't create this collection.",
       );
-    } finally {
-      setIsSubmitting(false);
     }
   }
 
@@ -59,8 +56,7 @@ export default function CollectionsPage() {
     if (!window.confirm(`Delete "${collection.name}"?`)) return;
     setError("");
     try {
-      await deleteCollection(collection.id);
-      setCollections((current) => current.filter((item) => item.id !== collection.id));
+      await deleteMutation.mutateAsync(collection.id);
     } catch (requestError) {
       setError(
         requestError instanceof ApiError
@@ -71,12 +67,10 @@ export default function CollectionsPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
-      <Navbar />
-      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
-        <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
+    <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="flex items-center gap-1 text-[11px] text-[var(--muted)]">
           <Link href="/" className="hover:text-[var(--text)]">Home</Link>
-          <span>›</span>
+          <ChevronRight size={13} />
           <strong className="text-[var(--text)]">Collections</strong>
         </div>
         <header className="flex flex-col justify-between gap-6 py-12 sm:flex-row sm:items-end sm:py-16">
@@ -99,20 +93,18 @@ export default function CollectionsPage() {
           <CollectionCreateForm
             name={name}
             description={description}
-            isSubmitting={isSubmitting}
+            isSubmitting={createMutation.isPending}
             onNameChange={setName}
             onDescriptionChange={setDescription}
             onSubmit={handleCreate}
           />
           <CollectionList
             collections={collections}
-            isLoading={isLoading}
-            error={error}
+            isLoading={collectionsQuery.isPending}
+            error={error || (collectionsQuery.error ? "We couldn't load your collections." : "")}
             onDelete={handleDelete}
           />
         </div>
-      </main>
-      <SiteFooter />
-    </div>
+    </main>
   );
 }
