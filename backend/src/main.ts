@@ -27,6 +27,12 @@ function validateEnvironment() {
   if (!process.env.FRONTEND_URL) {
     throw new Error('FRONTEND_URL is required.');
   }
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !process.env.FRONTEND_URL.startsWith('https://')
+  ) {
+    throw new Error('FRONTEND_URL must use HTTPS in production.');
+  }
 }
 
 async function bootstrap() {

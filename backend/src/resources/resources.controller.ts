@@ -21,13 +21,18 @@ import { UpdateResourceDto } from './dto/update-resource.dto';
 import { Roles } from 'src/auth/dto/roles.decorator';
 import { RolesGuard } from 'src/auth/dto/roles.guard';
 import { UpdateResourceStatusDto } from './dto/update-resource-status.dto';
+import { ResourceMetadataDto } from './dto/resource-metadata.dto';
+import { ResourceMetadataService } from './resource-metadata.service';
 
 import { CurrentUser } from 'src/auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 
 @Controller('resources')
 export class ResourcesController {
-  constructor(private readonly resourcesService: ResourcesService) { }
+  constructor(
+    private readonly resourcesService: ResourcesService,
+    private readonly resourceMetadataService: ResourceMetadataService,
+  ) { }
 
 
   @Get()
@@ -42,6 +47,12 @@ export class ResourcesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.resourcesService.create(createResourceDto, user.userId);
+  }
+
+  @Post('metadata')
+  @UseGuards(JwtAuthGuard)
+  previewMetadata(@Body() dto: ResourceMetadataDto) {
+    return this.resourceMetadataService.fetchMetadata(dto.url);
   }
 
 

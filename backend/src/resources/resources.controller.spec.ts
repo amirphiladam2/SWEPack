@@ -6,6 +6,7 @@ jest.mock('../auth/jwt-auth.guard', () => ({
 
 import { ResourcesController } from './resources.controller';
 import { ResourcesService } from './resources.service';
+import { ResourceMetadataService } from './resource-metadata.service';
 
 describe('ResourcesController', () => {
   let controller: ResourcesController;
@@ -16,6 +17,10 @@ describe('ResourcesController', () => {
       providers: [
         {
           provide: ResourcesService,
+          useValue: {},
+        },
+        {
+          provide: ResourceMetadataService,
           useValue: {},
         },
       ],

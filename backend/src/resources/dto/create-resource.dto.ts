@@ -14,6 +14,14 @@ export class CreateResourceDto {
   @MaxLength(500)
   description?: string;
 
+  @IsOptional()
+  @IsUrl()
+  logoUrl?: string;
+
+  @IsOptional()
+  @IsUrl()
+  previewImageUrl?: string;
+
   @IsEnum(ResourceType)
   type!: ResourceType;
 

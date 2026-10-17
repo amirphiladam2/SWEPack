@@ -7,6 +7,7 @@ jest.mock('@nestjs/jwt', () => ({
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
+import { EmailService } from './email.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -15,6 +16,7 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: EmailService, useValue: {} },
         { provide: PrismaService, useValue: {} },
         { provide: JwtService, useValue: {} },
       ],
