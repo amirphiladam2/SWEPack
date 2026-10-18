@@ -6,6 +6,10 @@ jest.mock('./jwt-auth.guard', () => ({
 jest.mock('@nestjs/jwt', () => ({
   JwtService: class JwtService {},
 }));
+jest.mock('@nestjs/throttler', () => ({
+  ThrottlerGuard: class ThrottlerGuard {},
+  Throttle: () => () => undefined,
+}));
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';

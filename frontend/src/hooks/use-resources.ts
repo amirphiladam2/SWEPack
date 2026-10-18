@@ -5,15 +5,16 @@ import {
   ApiError,
   fetchResources,
   fetchSavedResources,
-  getAccessToken,
   saveResource as saveResourceRequest,
   unsaveResource,
 } from "@/lib/api";
 import { toResourceViewModel, type Resource } from "@/types/resource";
 import type { ResourceListResponse } from "@/types/backend";
+import { useAuthSession } from "@/components/providers/auth-session-provider";
 
 export function useResources(query: string, categoryId: string, page: number) {
   const queryClient = useQueryClient();
+  const { token, isReady } = useAuthSession();
   const resourcesQuery = useQuery({
     queryKey: ["resources", { query, categoryId, page }],
     queryFn: () => fetchResources(query, categoryId, page),
@@ -22,7 +23,7 @@ export function useResources(query: string, categoryId: string, page: number) {
   const savedQuery = useQuery({
     queryKey: ["saved-resources"],
     queryFn: fetchSavedResources,
-    enabled: Boolean(getAccessToken()),
+    enabled: isReady && Boolean(token),
     staleTime: 60_000,
   });
 

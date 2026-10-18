@@ -1,13 +1,12 @@
-
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
-import { JwtService } from '@nestjs/jwt';
 
 describe('SWEPack API (e2e)', () => {
   let app: INestApplication<App>;
@@ -16,11 +15,10 @@ describe('SWEPack API (e2e)', () => {
     id: 'test-user-1',
     name: 'Integration Test User',
     email: 'integration@example.com',
-    password: '$2b$10$mocked-hash',
     role: 'USER',
+    tokenVersion: 0,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
   };
-
   const prismaMock = {
     $queryRaw: jest.fn(),
     user: {
@@ -28,7 +26,6 @@ describe('SWEPack API (e2e)', () => {
       create: jest.fn(),
     },
   };
-
   const jwtMock = {
     signAsync: jest.fn(),
     verifyAsync: jest.fn(),
@@ -45,7 +42,6 @@ describe('SWEPack API (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -53,7 +49,6 @@ describe('SWEPack API (e2e)', () => {
         transform: true,
       }),
     );
-
     await app.init();
   });
 
@@ -71,14 +66,11 @@ describe('SWEPack API (e2e)', () => {
       .get('/health')
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toMatchObject({
-          status: 'ok',
-          database: 'ok',
-        });
+        expect(body).toMatchObject({ status: 'ok', database: 'ok' });
       });
   });
 
-  it('POST /auth/register creates a user', async () => {
+  it('POST /auth/register creates a password-hashed user', async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
     prismaMock.user.create.mockImplementation(({ data }) =>
       Promise.resolve({
@@ -92,19 +84,18 @@ describe('SWEPack API (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
-        name: 'Integration Test User',
-        email: 'integration@example.com',
+        name: mockUser.name,
+        email: mockUser.email,
         password: 'TestPass123!',
       })
       .expect(201);
 
     expect(response.body).toMatchObject({
       id: mockUser.id,
-      name: 'Integration Test User',
-      email: 'integration@example.com',
+      name: mockUser.name,
+      email: mockUser.email,
       role: 'USER',
     });
-
     expect(response.body.password).toBeUndefined();
     expect(prismaMock.user.create).toHaveBeenCalledTimes(1);
   });
@@ -123,20 +114,15 @@ describe('SWEPack API (e2e)', () => {
   });
 
   it('POST /auth/login returns an access token for valid credentials', async () => {
-    const passwordHash = await bcrypt.hash('TestPass123!', 4);
-
     prismaMock.user.findUnique.mockResolvedValue({
       ...mockUser,
-      password: passwordHash,
+      password: await bcrypt.hash('TestPass123!', 4),
     });
     jwtMock.signAsync.mockResolvedValue('test-access-token');
 
     const response = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({
-        email: mockUser.email,
-        password: 'TestPass123!',
-      })
+      .send({ email: mockUser.email, password: 'TestPass123!' })
       .expect(201);
 
     expect(response.body.accessToken).toBe('test-access-token');
@@ -155,16 +141,11 @@ describe('SWEPack API (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/auth/login')
-      .send({
-        email: mockUser.email,
-        password: 'WrongPass123!',
-      })
+      .send({ email: mockUser.email, password: 'WrongPass123!' })
       .expect(401);
   });
 
   it('GET /auth/me rejects requests without a token', async () => {
-    await request(app.getHttpServer())
-      .get('/auth/me')
-      .expect(401);
+    await request(app.getHttpServer()).get('/auth/me').expect(401);
   });
 });

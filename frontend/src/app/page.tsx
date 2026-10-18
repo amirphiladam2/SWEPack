@@ -34,6 +34,11 @@ export default function ResourcesPage() {
     setPage(1);
     setCategory(value);
   }
+  function clearFilters() {
+    setPage(1);
+    setCategory("");
+    setQuery("");
+  }
   const sortedResources = useMemo(
     () =>
       sort === "name"
@@ -47,7 +52,7 @@ export default function ResourcesPage() {
           <div className="flex flex-col justify-between gap-8 sm:flex-row sm:items-end">
           <div className="max-w-2xl">
             <p className="eyebrow mb-4 flex items-center gap-2"><Library size={14} /> Resource library</p>
-            <h1 className="mb-5 max-w-3xl text-[clamp(2.5rem,5vw,4.25rem)] font-extrabold leading-[.98] tracking-[-0.075em]">Find tools that help your work take shape.</h1>
+            <h1 className="mb-5 max-w-3xl font-[family-name:var(--font-geist)] text-[clamp(2.5rem,5vw,4.25rem)] font-bold leading-[1.02] tracking-[-0.055em]">Find tools that help your work take shape.</h1>
             <p className="max-w-xl text-[15px] leading-7 text-[var(--muted)]">
               A carefully organized library of tools, guides, infrastructure,
               and communities worth keeping close.
@@ -90,29 +95,44 @@ export default function ResourcesPage() {
             selected={category}
             onSelect={handleCategoryChange}
             onTagSelect={handleQueryChange}
+            onClear={clearFilters}
           />
           <div className="min-w-0">
             <header className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="eyebrow mb-2">Curated picks</p>
                 <h2 className="mb-1 text-2xl font-extrabold tracking-[-.04em]">Resource library</h2>
-                <p className="text-xs text-[var(--muted)]">
+                <p className="text-xs text-[var(--muted)]" aria-live="polite">
                   {isLoading
                     ? "Updating resources…"
                     : `${meta?.total ?? sortedResources.length} matching resources`}
                 </p>
               </div>
-              <button
-                className="h-10 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-xs font-bold text-[var(--muted)] transition hover:border-[var(--line-strong)] hover:bg-[var(--surface-muted)]"
-                onClick={() => setSort(sort === "default" ? "name" : "default")}
-              >
-                <span className="inline-flex items-center gap-1.5">Sort: {sort === "default" ? "Default" : "Name"}<ArrowDownUp size={13} /></span>
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                {(query || category) && (
+                  <button
+                    className="h-10 rounded-xl px-3 text-xs font-semibold text-[var(--blue)] transition hover:bg-[var(--blue-soft)]"
+                    type="button"
+                    onClick={clearFilters}
+                  >
+                    Clear filters
+                  </button>
+                )}
+                <button
+                  className="h-10 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-xs font-bold text-[var(--muted)] transition hover:border-[var(--line-strong)] hover:bg-[var(--surface-muted)]"
+                  type="button"
+                  onClick={() => setSort(sort === "default" ? "name" : "default")}
+                >
+                  <span className="inline-flex items-center gap-1.5">Sort: {sort === "default" ? "Default" : "Name"}<ArrowDownUp size={13} /></span>
+                </button>
+              </div>
             </header>
             <ResourceGrid
               resources={sortedResources}
               loading={isLoading}
               error={error}
+              hasFilters={Boolean(query || category)}
+              onClearFilters={clearFilters}
             />
             {meta && meta.totalPages > 1 && (
               <nav className="mt-6 flex items-center justify-center gap-4 text-xs text-[var(--muted)]" aria-label="Resource pages">

@@ -13,6 +13,7 @@ export default function ForgotPasswordPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
+    setMessage("");
     setError("");
     try {
       const response = await requestPasswordReset(email.trim());
@@ -41,6 +42,7 @@ export default function ForgotPasswordPage() {
             <input
               className="h-11 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-sm font-normal outline-none focus:border-[var(--blue)]"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -48,7 +50,7 @@ export default function ForgotPasswordPage() {
           </label>
           {message && <p className="mt-4 rounded-lg bg-green-50 p-3 text-xs text-green-700" role="status">{message}</p>}
           {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700" role="alert">{error}</p>}
-          <button className="mt-6 h-10 w-full rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:bg-blue-700" disabled={isSubmitting}>
+          <button className="mt-6 h-10 w-full rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90" disabled={isSubmitting}>
             {isSubmitting ? "Sending…" : "Send reset instructions"}
           </button>
         </form>

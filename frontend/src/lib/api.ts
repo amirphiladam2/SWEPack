@@ -9,6 +9,7 @@ import type {
   LoginInput,
   RegisterInput,
   ResourceListResponse,
+  UserProfile,
 } from "@/types/backend";
 import type { ResourceSubmission } from "@/types/submission";
 
@@ -32,10 +33,12 @@ export function getAccessToken() {
 
 export function setAccessToken(token: string) {
   window.localStorage.setItem(TOKEN_KEY, token);
+  window.dispatchEvent(new Event("swepack-auth-changed"));
 }
 
 export function clearAccessToken() {
   window.localStorage.removeItem(TOKEN_KEY);
+  window.dispatchEvent(new Event("swepack-auth-changed"));
 }
 
 async function request<T>(
@@ -97,7 +100,7 @@ export function resetPassword(token: string, password: string) {
 }
 
 export function register(input: RegisterInput) {
-  return request("/auth/register", {
+  return request<UserProfile>("/auth/register", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -169,7 +172,7 @@ export function fetchResourceMetadata(url: string) {
 }
 
 export function fetchCurrentUser() {
-  return request<AuthResponse["user"]>("/auth/me", {}, true);
+  return request<UserProfile>("/auth/me", {}, true);
 }
 
 export function fetchAdminResources(search = "", status = "", page = 1) {

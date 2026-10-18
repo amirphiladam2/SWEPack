@@ -27,7 +27,7 @@ function ResourcePreview({ resource }: { resource: Resource }) {
 
 export function ResourceCard({ resource }: Props) {
   return (
-    <article className="group flex min-h-[372px] flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-[0_16px_35px_-28px_color-mix(in_srgb,var(--text)_65%,transparent)] transition duration-300 hover:-translate-y-1 hover:border-[var(--line-strong)] hover:shadow-[0_24px_42px_-28px_color-mix(in_srgb,var(--text)_65%,transparent)]">
+    <article className="group flex min-h-[372px] flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] transition duration-300 hover:border-[var(--line-strong)]">
       <ResourcePreview resource={resource} />
       <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start justify-between gap-3">

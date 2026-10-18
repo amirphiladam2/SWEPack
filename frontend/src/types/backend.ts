@@ -80,12 +80,14 @@ export type RegisterInput = {
 
 export type AuthResponse = {
   accessToken: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: "USER" | "ADMIN";
-  };
+  user: UserProfile;
+};
+
+export type UserProfile = {
+  id: string;
+  name: string;
+  email: string;
+  role: "USER" | "ADMIN";
 };
 
 export type BackendCollection = {

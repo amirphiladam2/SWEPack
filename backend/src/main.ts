@@ -39,6 +39,10 @@ async function bootstrap() {
   validateEnvironment();
   const app = await NestFactory.create(AppModule);
 
+  if (process.env.NODE_ENV === 'production') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
   app.enableCors({
     origin: process.env.FRONTEND_URL,
   });

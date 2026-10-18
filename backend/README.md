@@ -95,6 +95,16 @@ The script upserts only the specified email, sets its role to `ADMIN`, hashes
 the password, and refuses local or non-Railway database URLs. It does not
 change public registration or expose an admin-promotion endpoint.
 
+### Password recovery
+
+Password reset emails use the Resend API. Configure `RESEND_API`, `EMAIL_FROM`,
+and the production `FRONTEND_URL` in the backend's secure environment. The
+sender domain must be verified with Resend. Apply pending database migrations
+with `npx prisma migrate deploy` before enabling the recovery flow. Reset
+requests are rate-limited, tokens expire after 30 minutes, and the API returns
+a generic response whether or not an account exists. Reset links keep the
+secret token in the URL fragment rather than sending it to the web server.
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:

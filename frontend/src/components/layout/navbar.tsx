@@ -1,26 +1,25 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, LogOut, Menu, Plus, User, X } from "lucide-react";
+import { LogOut, Menu, Plus, User, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import {
-  clearAccessToken,
-  fetchCurrentUser,
-  getAccessToken,
-} from "@/lib/api";
+import { clearAccessToken, fetchCurrentUser } from "@/lib/api";
+import { useAuthSession } from "@/components/providers/auth-session-provider";
 
 export function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const { token, isReady } = useAuthSession();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const currentUserQuery = useQuery({
     queryKey: ["current-user"],
     queryFn: fetchCurrentUser,
-    enabled: Boolean(getAccessToken()),
+    enabled: isReady && Boolean(token),
     retry: false,
   });
   const currentUser = currentUserQuery.data;
@@ -29,20 +28,20 @@ export function Navbar() {
     return path === "/" ? pathname === "/" : pathname.startsWith(path);
   }
 
-  function signOut() {
+  function handleSignOut() {
     clearAccessToken();
     queryClient.removeQueries({ queryKey: ["current-user"] });
     queryClient.removeQueries({ queryKey: ["saved-resources"] });
     setIsAccountMenuOpen(false);
     setIsMenuOpen(false);
+    router.push("/login");
   }
 
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[var(--header)] px-5 backdrop-blur-xl sm:px-8">
       <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between">
-      <Link className="flex items-center gap-2.5 text-base font-extrabold tracking-[-0.055em] text-[var(--text)]" href="/">
-        <span className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--blue)] text-white"><Boxes size={18} /></span>
-        SWEPack
+      <Link className="text-xl font-extrabold tracking-[-0.06em]" href="/" aria-label="SWEPack home">
+        <span className="text-[var(--accent)]">SWE</span><span className="text-[var(--brand-ink)]">Pack</span>
       </Link>
       <nav className={`${isMenuOpen ? "flex" : "hidden"} absolute inset-x-0 top-full flex-col gap-1 border-b border-[var(--line)] bg-[var(--bg)] p-3 shadow-lg sm:static sm:flex sm:h-full sm:flex-row sm:items-center sm:gap-6 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none`} aria-label="Main navigation">
         <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/" onClick={() => setIsMenuOpen(false)}>
@@ -54,20 +53,22 @@ export function Navbar() {
         <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/submit") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/submit" onClick={() => setIsMenuOpen(false)}>
           Submit a link
         </Link>
-        {!currentUserQuery.isPending && !currentUser && (
+        {isReady && !token && (
           <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/login") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/login" onClick={() => setIsMenuOpen(false)}>
             Sign in
           </Link>
         )}
-        <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/admin") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/admin" onClick={() => setIsMenuOpen(false)}>
-          Admin
-        </Link>
+        {currentUser?.role === "ADMIN" && (
+          <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/admin") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/admin" onClick={() => setIsMenuOpen(false)}>
+            Admin
+          </Link>
+        )}
       </nav>
       <div className="flex items-center gap-2">
         <Link href="/submit" className="primary-action hidden h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-white sm:inline-flex"><Plus size={14} /> Add resource</Link>
         <ThemeToggle />
         {currentUser && (
-          <div className="relative hidden sm:block">
+          <div className="relative">
             <button
               className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--blue)]"
               aria-expanded={isAccountMenuOpen}
@@ -99,7 +100,7 @@ export function Navbar() {
                 <button
                   className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50"
                   role="menuitem"
-                  onClick={signOut}
+                  onClick={handleSignOut}
                 >
                   <LogOut size={14} /> Sign out
                 </button>

@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Resend } from 'resend';
 
 @Injectable()
@@ -10,25 +10,30 @@ export class EmailService {
 
   async sendPasswordResetEmail(email: string, token: string) {
     const frontendUrl = process.env.FRONTEND_URL;
-    const from = process.env.EMAIL_FROM ?? 'no-reply@support.swe.com';
+    const from = process.env.EMAIL_FROM ?? 'onboarding@resend.dev';
     if (!this.resend || !frontendUrl) {
-      throw new InternalServerErrorException(
-        'Password recovery is not configured.',
-      );
+      this.logger.warn('Password reset email is not configured.');
+      return false;
     }
 
-    const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
-    const { error } = await this.resend.emails.send({
-      from,
-      to: email,
-      subject: 'Reset your SWEPack password',
-      text: `Reset your SWEPack password using this link: ${resetUrl}\n\nThis link expires in 30 minutes and can only be used once.`,
-    });
-    if (error) {
-      this.logger.error(`Password reset email failed: ${error.message}`);
-      throw new InternalServerErrorException(
-        'Password recovery is temporarily unavailable.',
-      );
+    const resetUrl = `${frontendUrl}/reset-password#token=${encodeURIComponent(token)}`;
+    try {
+      const { error } = await this.resend.emails.send({
+        from,
+        to: email,
+        subject: 'Reset your SWEPack password',
+        text: `Reset your SWEPack password using this link: ${resetUrl}\n\nThis link expires in 30 minutes and can only be used once.`,
+      });
+      if (error) {
+        this.logger.error(`Password reset email failed: ${error.message}`);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown email delivery error.';
+      this.logger.error(`Password reset email failed: ${message}`);
+      return false;
     }
   }
 }

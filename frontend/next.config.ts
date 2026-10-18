@@ -1,5 +1,15 @@
 import type { NextConfig } from "next";
 
+if (process.env.NODE_ENV === "production") {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!apiUrl) {
+    throw new Error("NEXT_PUBLIC_API_URL is required for production builds.");
+  }
+  if (new URL(apiUrl).protocol !== "https:") {
+    throw new Error("NEXT_PUBLIC_API_URL must use HTTPS in production.");
+  }
+}
+
 const nextConfig: NextConfig = {
   reactCompiler: true,
   async headers() {
