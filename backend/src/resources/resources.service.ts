@@ -124,26 +124,29 @@ export class ResourcesService {
       }),
     };
 
-    const orderBy =
+    const orderBy: Prisma.ResourceOrderByWithRelationInput[] =
       sort === 'oldest'
-        ? { createdAt: 'asc' as const }
+        ? [{ createdAt: 'asc' }, { id: 'asc' }]
         : sort === 'title'
-          ? { title: 'asc' as const }
-          : { createdAt: 'desc' as const };
+          ? [{ title: 'asc' }, { id: 'asc' }]
+          : [{ createdAt: 'desc' }, { id: 'asc' }];
 
     const [resources, total] = await this.prisma.$transaction([
       this.prisma.resource.findMany({
         where,
-        include: {
-          category: true,
-          tags: {
-            include: { tag: true },
+        select: {
+          id: true,
+          title: true,
+          url: true,
+          description: true,
+          type: true,
+          logoUrl: true,
+          previewImageUrl: true,
+          category: {
+            select: { id: true, name: true },
           },
-          submittedBy: {
-            select: {
-              id: true,
-              name: true,
-            },
+          tags: {
+            select: { tag: { select: { name: true } } },
           },
         },
         orderBy,

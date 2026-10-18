@@ -1,4 +1,8 @@
-import type { BackendCategory, BackendResource } from "@/types/backend";
+import type {
+  BackendCategory,
+  BackendResource,
+  ResourceLibraryItem,
+} from "@/types/backend";
 
 export type Resource = {
   id: string;
@@ -22,10 +26,11 @@ export type Category = {
 };
 
 const colors = ["purple", "mint", "yellow", "violet", "pink", "blue"];
+const noSavedResources: ReadonlySet<string> = new Set();
 
 export function toResourceViewModel(
-  resource: BackendResource,
-  savedIds: ReadonlySet<string>,
+  resource: BackendResource | ResourceLibraryItem,
+  savedIds: ReadonlySet<string> = noSavedResources,
 ): Resource {
   const name = resource.title;
   return {

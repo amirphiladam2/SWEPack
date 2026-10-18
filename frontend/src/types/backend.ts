@@ -47,8 +47,22 @@ export type BackendResource = {
   updatedAt: string;
 };
 
-export type ResourceListResponse = {
-  data: BackendResource[];
+export type ResourceLibraryItem = {
+  id: string;
+  title: string;
+  url: string;
+  description: string | null;
+  type: ResourceType;
+  logoUrl: string | null;
+  previewImageUrl: string | null;
+  category: Pick<BackendCategory, "id" | "name"> | null;
+  tags: Array<{ tag: Pick<BackendTag, "name"> }>;
+};
+
+export type ResourceListResponse<
+  TResource extends BackendResource | ResourceLibraryItem = BackendResource,
+> = {
+  data: TResource[];
   meta: {
     total: number;
     page: number;

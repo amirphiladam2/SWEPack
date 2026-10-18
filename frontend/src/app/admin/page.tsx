@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ApiError,
@@ -58,6 +59,7 @@ function statusClass(status: BackendResource["status"]) {
 
 export default function AdminPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [resources, setResources] = useState<BackendResource[]>([]);
@@ -190,6 +192,7 @@ export default function AdminPage() {
     setError("");
     try {
       await updateResourceStatus(resource.id, nextStatus);
+      await queryClient.invalidateQueries({ queryKey: ["resources"] });
       setNotice(`Resource ${nextStatus.toLowerCase()}.`);
       await loadData();
     } catch (requestError) {
@@ -201,6 +204,7 @@ export default function AdminPage() {
     if (!window.confirm(`Delete "${resource.title}"? This cannot be undone.`)) return;
     try {
       await deleteResource(resource.id);
+      await queryClient.invalidateQueries({ queryKey: ["resources"] });
       setNotice("Resource deleted.");
       await loadData();
     } catch (requestError) {
@@ -221,6 +225,7 @@ export default function AdminPage() {
         type: String(form.get("type")) as BackendResource["type"],
         categoryId: String(form.get("categoryId") ?? "") || undefined,
       });
+      await queryClient.invalidateQueries({ queryKey: ["resources"] });
       setEditingResource(null);
       setNotice("Resource updated.");
       await loadData();

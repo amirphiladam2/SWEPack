@@ -7,11 +7,13 @@ import {
   fetchMyResources,
   submitResource,
 } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { resourceTypes } from "@/types/backend";
 import type { ResourceSubmission } from "@/types/submission";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
 
 export function SubmitResourceForm() {
+  const queryClient = useQueryClient();
   const { categories, tags } = useTaxonomy();
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
@@ -73,6 +75,7 @@ export function SubmitResourceForm() {
     };
     try {
       await submitResource(submission);
+      await queryClient.invalidateQueries({ queryKey: ["resources"] });
       event.currentTarget.reset();
       setSelectedTagIds([]);
       setTitle("");
@@ -90,6 +93,7 @@ export function SubmitResourceForm() {
           (resource) => resource.url === submission.url,
         );
         if (wasCreated) {
+          await queryClient.invalidateQueries({ queryKey: ["resources"] });
           event.currentTarget.reset();
           setSelectedTagIds([]);
           setTitle("");

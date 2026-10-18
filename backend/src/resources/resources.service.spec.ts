@@ -63,7 +63,9 @@ describe('ResourcesService', () => {
     prismaMock.resource.count.mockResolvedValue(2);
 
     const result = await service.findAll({
-      page: 1, limit: 10, sort: 'newest',
+      page: 1,
+      limit: 10,
+      sort: 'newest',
     });
 
     expect(result).toEqual({
@@ -74,9 +76,20 @@ describe('ResourcesService', () => {
     expect(prismaMock.resource.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: 'PUBLISHED' },
+        select: {
+          id: true,
+          title: true,
+          url: true,
+          description: true,
+          type: true,
+          logoUrl: true,
+          previewImageUrl: true,
+          category: { select: { id: true, name: true } },
+          tags: { select: { tag: { select: { name: true } } } },
+        },
         skip: 0,
         take: 10,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       }),
     );
   });
@@ -116,7 +129,9 @@ describe('ResourcesService', () => {
     prismaMock.resource.count.mockResolvedValue(25);
 
     const result = await service.findAll({
-      page: 3, limit: 10, sort: 'newest',
+      page: 3,
+      limit: 10,
+      sort: 'newest',
     });
 
     expect(prismaMock.resource.findMany).toHaveBeenCalledWith(
@@ -133,11 +148,15 @@ describe('ResourcesService', () => {
     prismaMock.resource.count.mockResolvedValue(0);
 
     await service.findAll({
-      page: 1, limit: 10, sort: 'title',
+      page: 1,
+      limit: 10,
+      sort: 'title',
     });
 
     expect(prismaMock.resource.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: { title: 'asc' } }),
+      expect.objectContaining({
+        orderBy: [{ title: 'asc' }, { id: 'asc' }],
+      }),
     );
   });
 
@@ -146,7 +165,9 @@ describe('ResourcesService', () => {
     prismaMock.resource.count.mockResolvedValue(0);
 
     const result = await service.findAll({
-      page: 1, limit: 10, sort: 'newest',
+      page: 1,
+      limit: 10,
+      sort: 'newest',
     });
 
     expect(result.data).toEqual([]);

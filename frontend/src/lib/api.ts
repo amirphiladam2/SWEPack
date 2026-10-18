@@ -8,6 +8,7 @@ import type {
   AdminResourceSummary,
   LoginInput,
   RegisterInput,
+  ResourceLibraryItem,
   ResourceListResponse,
   UserProfile,
 } from "@/types/backend";
@@ -116,15 +117,34 @@ export function fetchTags() {
   return request<BackendTag[]>("/tags");
 }
 
-export function fetchResources(
-  search = "",
-  categoryId = "",
-  page = 1,
-): Promise<ResourceListResponse> {
-  const params = new URLSearchParams({ page: String(page), limit: "50" });
+export type ResourceSort = "newest" | "title";
+
+export type ResourceQueryOptions = {
+  search: string;
+  categoryId: string;
+  page: number;
+  sort: ResourceSort;
+  signal?: AbortSignal;
+};
+
+export function fetchResources({
+  search,
+  categoryId,
+  page,
+  sort,
+  signal,
+}: ResourceQueryOptions): Promise<ResourceListResponse<ResourceLibraryItem>> {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: "50",
+    sort,
+  });
   if (search) params.set("search", search);
   if (categoryId) params.set("categoryId", categoryId);
-  return request<ResourceListResponse>(`/resources?${params.toString()}`);
+  return request<ResourceListResponse<ResourceLibraryItem>>(
+    `/resources?${params.toString()}`,
+    { signal },
+  );
 }
 
 export function saveResource(id: string) {

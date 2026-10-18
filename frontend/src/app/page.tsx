@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowDownUp, ArrowRight, Compass, Library } from "lucide-react";
 import { FilterSidebar } from "@/components/resources/filter-sidebar";
@@ -11,13 +11,22 @@ import { useTaxonomy } from "@/hooks/use-taxonomy";
 
 export default function ResourcesPage() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [category, setCategory] = useState("");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<"default" | "name">("default");
-  const { resources, isLoading, error, meta } = useResources(
-    query,
+  const {
+    resources,
+    isLoading,
+    isFetching,
+    error,
+    meta,
+    retry,
+  } = useResources(
+    debouncedQuery.trim(),
     category,
     page,
+    sort === "name" ? "title" : "newest",
   );
   const taxonomy = useTaxonomy();
   const categories: Category[] = taxonomy.categories.map(({ id, name }) => ({
@@ -25,6 +34,11 @@ export default function ResourcesPage() {
     name,
   }));
   const tags = taxonomy.tags.map(({ name }) => name);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(query), 250);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
+
   function handleQueryChange(value: string) {
     setPage(1);
     setQuery(value);
@@ -38,14 +52,8 @@ export default function ResourcesPage() {
     setPage(1);
     setCategory("");
     setQuery("");
+    setDebouncedQuery("");
   }
-  const sortedResources = useMemo(
-    () =>
-      sort === "name"
-        ? [...resources].sort((a, b) => a.name.localeCompare(b.name))
-        : resources,
-    [resources, sort],
-  );
   return (
     <main className="page-shell flex-1" id="resources">
         <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-6 py-12 sm:px-10 sm:py-16">
@@ -104,8 +112,10 @@ export default function ResourcesPage() {
                 <h2 className="mb-1 text-2xl font-extrabold tracking-[-.04em]">Resource library</h2>
                 <p className="text-xs text-[var(--muted)]" aria-live="polite">
                   {isLoading
-                    ? "Updating resources…"
-                    : `${meta?.total ?? sortedResources.length} matching resources`}
+                    ? "Loading resources…"
+                    : isFetching
+                      ? "Updating resources…"
+                      : `${meta?.total ?? resources.length} matching resources`}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -121,16 +131,20 @@ export default function ResourcesPage() {
                 <button
                   className="h-10 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-xs font-bold text-[var(--muted)] transition hover:border-[var(--line-strong)] hover:bg-[var(--surface-muted)]"
                   type="button"
-                  onClick={() => setSort(sort === "default" ? "name" : "default")}
+                  onClick={() => {
+                    setPage(1);
+                    setSort(sort === "default" ? "name" : "default");
+                  }}
                 >
                   <span className="inline-flex items-center gap-1.5">Sort: {sort === "default" ? "Default" : "Name"}<ArrowDownUp size={13} /></span>
                 </button>
               </div>
             </header>
             <ResourceGrid
-              resources={sortedResources}
+              resources={resources}
               loading={isLoading}
               error={error}
+              onRetry={retry}
               hasFilters={Boolean(query || category)}
               onClearFilters={clearFilters}
             />
@@ -138,7 +152,7 @@ export default function ResourcesPage() {
               <nav className="mt-6 flex items-center justify-center gap-4 text-xs text-[var(--muted)]" aria-label="Resource pages">
                 <button
                   className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 font-semibold text-[var(--text)] hover:bg-[var(--surface-muted)]"
-                  disabled={page === 1 || isLoading}
+                  disabled={page === 1 || isFetching}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                 >
                   Previous
@@ -148,7 +162,7 @@ export default function ResourcesPage() {
                 </span>
                 <button
                   className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 font-semibold text-[var(--text)] hover:bg-[var(--surface-muted)]"
-                  disabled={page === meta.totalPages || isLoading}
+                  disabled={page === meta.totalPages || isFetching}
                   onClick={() =>
                     setPage((current) => Math.min(meta.totalPages, current + 1))
                   }
