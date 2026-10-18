@@ -14,6 +14,8 @@ import type {
 import type { ResourceSubmission } from "@/types/submission";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+export const PASSWORD_RESET_ENABLED =
+  process.env.NEXT_PUBLIC_PASSWORD_RESET_ENABLED === "true";
 const TOKEN_KEY = "swepack-access-token";
 
 export class ApiError extends Error {

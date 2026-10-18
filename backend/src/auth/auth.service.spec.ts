@@ -4,6 +4,7 @@ jest.mock('@nestjs/jwt', () => ({
 }));
 
 import { JwtService } from '@nestjs/jwt';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { AuthService } from './auth.service';
@@ -26,9 +27,11 @@ describe('AuthService', () => {
   const jwtService = { signAsync: jest.fn() };
   const emailService = { sendPasswordResetEmail: jest.fn() };
   let service: AuthService;
+  const originalPasswordResetEnabled = process.env.PASSWORD_RESET_ENABLED;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.PASSWORD_RESET_ENABLED = 'true';
     service = new AuthService(
       prisma as unknown as PrismaService,
       jwtService as unknown as JwtService,
@@ -38,6 +41,14 @@ describe('AuthService', () => {
     prisma.user.update.mockResolvedValue({});
     prisma.passwordResetToken.delete.mockResolvedValue({});
     prisma.passwordResetToken.deleteMany.mockResolvedValue({ count: 0 });
+  });
+
+  afterAll(() => {
+    if (originalPasswordResetEnabled === undefined) {
+      delete process.env.PASSWORD_RESET_ENABLED;
+    } else {
+      process.env.PASSWORD_RESET_ENABLED = originalPasswordResetEnabled;
+    }
   });
 
   it('creates a password-hashed account', async () => {
@@ -99,6 +110,19 @@ describe('AuthService', () => {
       'If an account exists for that email, and email delivery is available, reset instructions will arrive shortly.',
     );
     expect(emailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects recovery requests while password reset is disabled', async () => {
+    process.env.PASSWORD_RESET_ENABLED = 'false';
+
+    await expect(
+      service.forgotPassword({ email: 'member@example.com' }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(
+      service.resetPassword({ token: 'reset-token', password: 'new-password' }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.passwordResetToken.findUnique).not.toHaveBeenCalled();
   });
 
   it('returns a generic recovery response when email delivery fails', async () => {

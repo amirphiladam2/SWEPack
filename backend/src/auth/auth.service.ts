@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
@@ -77,6 +78,8 @@ export class AuthService {
   }
 
   async forgotPassword({ email }: ForgotPasswordDto) {
+    this.assertPasswordRecoveryEnabled();
+
     const user = await this.prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
@@ -110,6 +113,8 @@ export class AuthService {
   }
 
   async resetPassword({ token, password }: ResetPasswordDto) {
+    this.assertPasswordRecoveryEnabled();
+
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const resetToken = await this.prisma.passwordResetToken.findUnique({
       where: { tokenHash },
@@ -137,5 +142,13 @@ export class AuthService {
     ]);
 
     return { message: 'Your password has been reset. You can now sign in.' };
+  }
+
+  private assertPasswordRecoveryEnabled() {
+    if (process.env.PASSWORD_RESET_ENABLED !== 'true') {
+      throw new ServiceUnavailableException(
+        'Password recovery is temporarily unavailable. Please try again later.',
+      );
+    }
   }
 }

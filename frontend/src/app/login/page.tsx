@@ -6,7 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { useAuthSession } from "@/components/providers/auth-session-provider";
-import { ApiError, fetchCurrentUser, login, register } from "@/lib/api";
+import {
+  ApiError,
+  fetchCurrentUser,
+  login,
+  PASSWORD_RESET_ENABLED,
+  register,
+} from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -203,7 +209,7 @@ export default function LoginPage() {
                   : "Create account"}
             </button>
           </div>
-          {mode === "login" && (
+          {mode === "login" && PASSWORD_RESET_ENABLED && (
             <Link className="mt-4 block text-center text-xs font-semibold text-[var(--blue)]" href="/forgot-password">
               Forgot your password?
             </Link>

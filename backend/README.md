@@ -98,12 +98,14 @@ change public registration or expose an admin-promotion endpoint.
 ### Password recovery
 
 Password reset emails use the Resend API. Configure `RESEND_API`, `EMAIL_FROM`,
-and the production `FRONTEND_URL` in the backend's secure environment. The
-sender domain must be verified with Resend. Apply pending database migrations
-with `npx prisma migrate deploy` before enabling the recovery flow. Reset
-requests are rate-limited, tokens expire after 30 minutes, and the API returns
-a generic response whether or not an account exists. Reset links keep the
-secret token in the URL fragment rather than sending it to the web server.
+and the production `FRONTEND_URL` in the backend's secure environment. Keep
+`PASSWORD_RESET_ENABLED=false` until the sender domain is verified with Resend.
+Then set it to `true` in the backend and set
+`NEXT_PUBLIC_PASSWORD_RESET_ENABLED=true` in the frontend environment before
+rebuilding. Reset requests are rate-limited, tokens expire after 30 minutes,
+and the API returns a generic response whether or not an account exists. Reset
+links keep the secret token in the URL fragment rather than sending it to the
+web server.
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
