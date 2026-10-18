@@ -212,6 +212,78 @@ describe('ResourcesService', () => {
     );
   });
 
+  it('returns an existing submission from the same user without creating a duplicate', async () => {
+    const existingResource = {
+      id: 'resource-123',
+      title: 'Existing Resource',
+      url: 'https://example.com/existing',
+      submittedById: 'user-123',
+    };
+    prismaMock.resource.findUnique.mockResolvedValue(existingResource);
+
+    const result = await service.create(
+      {
+        title: 'Existing Resource',
+        url: 'https://example.com/existing',
+      },
+      'user-123',
+    );
+
+    expect(result).toEqual(existingResource);
+    expect(prismaMock.resource.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a URL already submitted by another user', async () => {
+    prismaMock.resource.findUnique.mockResolvedValue({
+      id: 'resource-123',
+      url: 'https://example.com/existing',
+      submittedById: 'another-user',
+    });
+
+    await expect(
+      service.create(
+        {
+          title: 'Existing Resource',
+          url: 'https://example.com/existing',
+        },
+        'user-123',
+      ),
+    ).rejects.toThrow('A resource with this URL has already been submitted.');
+    expect(prismaMock.resource.create).not.toHaveBeenCalled();
+  });
+
+  it('treats a same-user URL race as an already completed submission', async () => {
+    const existingResource = {
+      id: 'resource-123',
+      url: 'https://example.com/existing',
+      submittedById: 'user-123',
+    };
+    prismaMock.resource.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existingResource);
+    prismaMock.resource.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: '7.10.0',
+          meta: { target: 'unknown' },
+        },
+      ),
+    );
+
+    const result = await service.create(
+      {
+        title: 'Existing Resource',
+        url: 'https://example.com/existing',
+      },
+      'user-123',
+    );
+
+    expect(result).toEqual(existingResource);
+  });
+
   it('reports duplicate resource submissions as conflicts', async () => {
     prismaMock.resource.findUnique.mockResolvedValue(null);
     prismaMock.resource.create.mockRejectedValue(

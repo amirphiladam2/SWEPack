@@ -19,6 +19,9 @@ export function SubmitResourceForm() {
     "idle" | "submitting" | "success" | "error"
   >("idle");
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState(
+    "Thanks! Your resource was submitted for review.",
+  );
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -53,8 +56,10 @@ export function SubmitResourceForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const submittedForm = event.currentTarget;
     setStatus("submitting");
     setError("");
+    setSuccessMessage("Thanks! Your resource was submitted for review.");
     const form = new FormData(event.currentTarget);
     const typeValue = String(form.get("type") ?? "");
     const type = resourceTypes.find((resourceType) => resourceType === typeValue);
@@ -73,10 +78,9 @@ export function SubmitResourceForm() {
       categoryId: String(form.get("categoryId") ?? "") || undefined,
       tagIds: selectedTagIds,
     };
-    try {
-      await submitResource(submission);
-      await queryClient.invalidateQueries({ queryKey: ["resources"] });
-      event.currentTarget.reset();
+
+    function finishSubmission(message: string) {
+      submittedForm.reset();
       setSelectedTagIds([]);
       setTitle("");
       setUrl("");
@@ -85,48 +89,72 @@ export function SubmitResourceForm() {
       setPreviewImageUrl(undefined);
       setIsTitleEdited(false);
       setIsDescriptionEdited(false);
+      setSuccessMessage(message);
       setStatus("success");
+      setError("");
+      void queryClient.invalidateQueries({ queryKey: ["resources"] });
+    }
+
+    function urlsMatch(first: string, second: string) {
+      try {
+        return new URL(first).href === new URL(second).href;
+      } catch {
+        return first.trim() === second.trim();
+      }
+    }
+
+    try {
+      await submitResource(submission);
+      finishSubmission("Thanks! Your resource was submitted for review.");
     } catch (requestError) {
+      const isConflict =
+        requestError instanceof ApiError && requestError.status === 409;
+      const isKnownFailure =
+        requestError instanceof ApiError &&
+        requestError.status >= 400 &&
+        requestError.status < 500 &&
+        !isConflict;
+
+      if (isKnownFailure) {
+        setStatus("error");
+        setError(
+          requestError.status === 401
+            ? "Please sign in before submitting a resource."
+            : requestError.message,
+        );
+        return;
+      }
+
       try {
         const submittedResources = await fetchMyResources();
         const wasCreated = submittedResources.some(
-          (resource) => resource.url === submission.url,
+          (resource) => urlsMatch(resource.url, submission.url),
         );
         if (wasCreated) {
-          await queryClient.invalidateQueries({ queryKey: ["resources"] });
-          event.currentTarget.reset();
-          setSelectedTagIds([]);
-          setTitle("");
-          setUrl("");
-          setDescription("");
-          setLogoUrl(undefined);
-          setPreviewImageUrl(undefined);
-          setIsTitleEdited(false);
-          setIsDescriptionEdited(false);
-          setStatus("success");
-          setError("");
+          finishSubmission(
+            "This resource has already been submitted for review.",
+          );
           return;
         }
       } catch (verificationError) {
         setStatus("error");
         setError(
-          requestError instanceof ApiError
+          isConflict && requestError instanceof ApiError
             ? requestError.message
             : verificationError instanceof ApiError
               ? verificationError.message
-              : "We couldn't verify whether the resource was submitted. Check the admin dashboard before trying again.",
+              : "We couldn't confirm whether the resource was submitted. Don't submit it again yet; check the admin dashboard before retrying.",
         );
         return;
       }
+
       setStatus("error");
       setError(
-        requestError instanceof ApiError && requestError.status === 401
-          ? "Please sign in before submitting a resource."
-          : requestError instanceof ApiError && requestError.status === 409
-            ? requestError.message
+        isConflict && requestError instanceof ApiError
+          ? requestError.message
           : requestError instanceof ApiError
             ? requestError.message
-            : "The request may have timed out, but the resource may still have been submitted. Check the admin dashboard before trying again.",
+            : "The request may have reached the server, but we couldn't confirm it. Don't submit it again yet; check the admin dashboard before retrying.",
       );
     }
   }
@@ -224,7 +252,7 @@ export function SubmitResourceForm() {
       </p>
       {status === "success" && (
         <p className="mt-4 rounded-lg bg-green-50 p-3 text-xs text-green-700" role="status">
-          Thanks! Your resource was submitted for review.
+          {successMessage}
         </p>
       )}
       {status === "error" && (

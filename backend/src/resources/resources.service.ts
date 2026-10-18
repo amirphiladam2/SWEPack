@@ -13,6 +13,15 @@ import { ResourceQueryDto } from './dto/resource-query.dto';
 import { ResourceStatus } from 'generated/prisma/enums';
 import { AdminResourceQueryDto } from './dto/admin-resource-query.dto';
 
+const submissionResourceInclude = {
+  category: true,
+  tags: {
+    include: {
+      tag: true,
+    },
+  },
+} satisfies Prisma.ResourceInclude;
+
 @Injectable()
 export class ResourcesService {
   private readonly logger = new Logger(ResourcesService.name);
@@ -224,11 +233,25 @@ export class ResourcesService {
     const { categoryId, tagIds, ...resourceData } = createResourceDto;
 
     try {
+      const existingResource = await this.prisma.resource.findUnique({
+        where: { url: createResourceDto.url },
+        include: submissionResourceInclude,
+      });
+      if (existingResource) {
+        if (existingResource.submittedById === userId) {
+          return existingResource;
+        }
+        throw new ConflictException(
+          'A resource with this URL has already been submitted.',
+        );
+      }
+
+      const slug = await this.generateUniqueSlug(createResourceDto.title);
       const resource = await this.prisma.resource.create({
         data: {
           ...resourceData,
 
-          slug: await this.generateUniqueSlug(createResourceDto.title),
+          slug,
 
           submittedBy: {
             connect: {
@@ -256,14 +279,7 @@ export class ResourcesService {
             : undefined,
         },
 
-        include: {
-          category: true,
-          tags: {
-            include: {
-              tag: true,
-            },
-          },
-        },
+        include: submissionResourceInclude,
       });
       this.logger.log('Resource submission created with PENDING status.');
       return resource;
@@ -272,6 +288,19 @@ export class ResourcesService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
+        const existingResource = await this.prisma.resource.findUnique({
+          where: { url: createResourceDto.url },
+          include: submissionResourceInclude,
+        });
+        if (existingResource) {
+          if (existingResource.submittedById === userId) {
+            return existingResource;
+          }
+          throw new ConflictException(
+            'A resource with this URL has already been submitted.',
+          );
+        }
+
         const fields = this.getUniqueConstraintFields(error);
         const target = fields.length > 0 ? fields.join(', ') : 'unknown';
         this.logger.warn(
