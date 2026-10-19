@@ -7,7 +7,7 @@ The project is a monorepo with a Next.js web application and a NestJS REST API b
 ## Features
 
 - Browse a paginated resource library with search, categories, and sorting.
-- Register and sign in with email and password.
+- Sign in with GitHub or the existing email/password account flow.
 - Submit resources for moderation and track your submissions.
 - Save resources and organize them into private collections.
 - Manage resource status, categories, and tags with an administrator account.
@@ -61,9 +61,14 @@ FRONTEND_URL=http://localhost:3000
 DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/swepack?schema=public
 JWT_SECRET=replace-with-a-random-secret-of-at-least-32-characters
 PASSWORD_RESET_ENABLED=false
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GITHUB_CALLBACK_URL=
 ```
 
 Use a URL-encoded password if it contains characters that have special meaning in a connection string. Keep real credentials in local environment files or your hosting provider's secret manager; do not commit them.
+
+GitHub OAuth is optional in development. To enable it, register a GitHub OAuth App and set its callback URL to `http://localhost:3000/api/auth/github/callback`; then set the three GitHub variables above. Use a separate GitHub OAuth App for development and production because each app has one callback URL.
 
 Install dependencies and prepare the local database:
 
@@ -89,9 +94,10 @@ Set the API URL in `frontend\.env.local`:
 ```dotenv
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_PASSWORD_RESET_ENABLED=false
+FRONTEND_URL=http://localhost:3000
 ```
 
-The password-reset setting should remain disabled unless the backend email configuration is complete.
+The browser talks to the API through a same-origin Next.js proxy. `NEXT_PUBLIC_API_URL` is used server-side by that proxy. The GitHub session is kept in a Secure, HttpOnly cookie on the frontend origin and is never exposed to browser JavaScript. The password-reset setting should remain disabled unless the backend email configuration is complete.
 
 ### 3. Start both applications
 
@@ -130,6 +136,9 @@ Use `cp backend/.env.example backend/.env` and `cp frontend/.env.example fronten
 | `PASSWORD_RESET_ENABLED` | No | Set to `true` to enable the API's password-reset flow after email is configured; defaults to disabled. |
 | `RESEND_API` | For password reset | Resend API key used to send password-reset email. |
 | `EMAIL_FROM` | For password reset | Verified sender address used by Resend. |
+| `GITHUB_CLIENT_ID` | Optional | GitHub OAuth App client ID. |
+| `GITHUB_CLIENT_SECRET` | Optional | GitHub OAuth App secret. Keep this only in the backend secret store. |
+| `GITHUB_CALLBACK_URL` | Optional | Exact GitHub OAuth callback URL. For local development, use `http://localhost:3000/api/auth/github/callback`; for production, use `https://swepack.vercel.app/api/auth/github/callback`. |
 
 ### Frontend (`frontend/.env.local`)
 
@@ -137,8 +146,24 @@ Use `cp backend/.env.example backend/.env` and `cp frontend/.env.example fronten
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Yes for production | Base URL of the backend API, without an endpoint path. Local development defaults to `http://localhost:3001`. Production builds require an HTTPS URL. |
 | `NEXT_PUBLIC_PASSWORD_RESET_ENABLED` | No | Set to `true` to expose password-reset UI. Keep this consistent with the backend setting. |
+| `FRONTEND_URL` | Yes for production | Exact frontend origin used by the same-origin API proxy to validate mutation requests; for production, `https://swepack.vercel.app`. |
 
 `NEXT_PUBLIC_*` values are included in browser-facing code. Never put secrets in frontend environment variables.
+
+### GitHub OAuth App settings
+
+Set the OAuth App's **Homepage URL** to the app's origin and its **Authorization callback URL** exactly to the value of `GITHUB_CALLBACK_URL`. Request only `read:user` and `user:email`; no repository permissions are needed. Use separate applications for development and production:
+
+| Environment | Callback URL |
+| --- | --- |
+| Development | `http://localhost:3000/api/auth/github/callback` |
+| Production | `https://swepack.vercel.app/api/auth/github/callback` |
+
+Use `http://localhost:3000` as the development app's Homepage URL and `https://swepack.vercel.app` as the production app's.
+
+The deployed frontend origin is `https://swepack.vercel.app`; its API is `https://swepack.onrender.com`. The backend exchanges the authorization code using its client secret. A Next.js server route validates the state cookie, stores the JWT in a host-only HttpOnly cookie, and proxies subsequent API requests using that JWT. Mutating proxy requests must have the configured exact `FRONTEND_URL` origin. Cookies use `SameSite=Lax`, `Secure` in production, `HttpOnly`, and a seven-day lifetime; logout clears the cookie and increments the user's token version to revoke sessions.
+
+Email/password registration, login, and recovery remain available. Matching email addresses are never linked automatically; an existing signed-in user can explicitly connect a GitHub account from the account menu.
 
 ## Useful commands
 
@@ -174,7 +199,7 @@ The backend exposes a REST API. Authenticated routes require a valid JWT; admini
 | Area | Routes |
 | --- | --- |
 | Health | `GET /health` |
-| Authentication | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` |
+| Authentication | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`; GitHub OAuth initiation/exchange is mediated by the frontend |
 | Password reset | `POST /auth/forgot-password`, `POST /auth/reset-password` (when enabled) |
 | Resources | `GET /resources`, `GET /resources/:id`, `POST /resources`, `POST /resources/metadata`, `GET /resources/mine`, `GET /resources/saved` |
 | Resource actions | `POST /resources/:id/save`, `DELETE /resources/:id/save`, `PATCH /resources/:id`, `DELETE /resources/:id` |
@@ -194,10 +219,18 @@ The admin bootstrap requires `DATABASE_URL`, `ADMIN_NAME`, `ADMIN_EMAIL`, and `A
 
 ## Deployment
 
-- **Frontend:** Deploy the `frontend` directory as the Vercel project root. Set `NEXT_PUBLIC_API_URL` to the HTTPS production API URL and set the password-reset flag according to the backend configuration.
-- **Backend:** Deploy the `backend` directory to a Node.js host. Configure the backend environment variables in the host's secret settings, build with `npm run build`, and start with `npm run start:prod`.
+- **Frontend:** Deploy the `frontend` directory as the Vercel project root. Set `NEXT_PUBLIC_API_URL=https://swepack.onrender.com` and `FRONTEND_URL=https://swepack.vercel.app`. Set the password-reset flag according to the backend configuration.
+- **Backend:** Deploy the `backend` directory to a Node.js host. Configure the backend environment variables in the host's secret settings, including GitHub credentials and `GITHUB_CALLBACK_URL=https://swepack.vercel.app/api/auth/github/callback`; build with `npm run build`, and start with `npm run start:prod`.
 - **Database:** Apply committed migrations to the intended database with `npx prisma migrate deploy --config prisma7.config.ts` from `backend`. For production, run migrations as a controlled release step before routing traffic to code that depends on them.
-- Configure `FRONTEND_URL` on the API to the exact deployed frontend origin. Configure HTTPS and secrets on the hosting platforms; do not commit production environment files.
+- Configure `FRONTEND_URL=https://swepack.vercel.app` on the API as well, so CORS and same-origin mutation validation agree. Configure HTTPS and secrets on the hosting platforms; do not commit production environment files.
+
+Before enabling GitHub sign-in in production:
+
+1. Create a production GitHub OAuth App with Homepage URL `https://swepack.vercel.app` and callback URL `https://swepack.vercel.app/api/auth/github/callback`.
+2. Add `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `GITHUB_CALLBACK_URL=https://swepack.vercel.app/api/auth/github/callback` to the backend's secret configuration. Do not put the client secret in Vercel.
+3. Confirm Vercel has `FRONTEND_URL=https://swepack.vercel.app` and `NEXT_PUBLIC_API_URL=https://swepack.onrender.com`.
+4. Review the new `GithubAccount`, `GithubOAuthState`, and nullable email/password migration, then apply it to the intended database with the controlled `migrate deploy` release step. Do not run `migrate dev` or a reset against production.
+5. Deploy the backend, then the frontend. Test first-time and returning GitHub users, account linking, password sign-in, logout, resource operations, and an existing admin account.
 
 Password-reset links are only functional when `PASSWORD_RESET_ENABLED=true` is set on the API, email credentials and sender are configured, and the frontend reset UI is enabled.
 

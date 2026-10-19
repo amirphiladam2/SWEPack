@@ -55,17 +55,15 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (
+      !user ||
+      !user.password ||
+      !(await bcrypt.compare(password, user.password))
+    ) {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
-    const accessToken = await this.jwtService.signAsync({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name,
-      tokenVersion: user.tokenVersion,
-    });
+    const accessToken = await this.createAccessToken(user);
     return {
       accessToken,
       user: {
@@ -73,8 +71,33 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        githubConnected: false,
       },
     };
+  }
+
+  createAccessToken(user: {
+    id: string;
+    name: string;
+    email: string | null;
+    role: string;
+    tokenVersion: number;
+  }) {
+    return this.jwtService.signAsync({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      tokenVersion: user.tokenVersion,
+    });
+  }
+
+  async logout(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+    });
+    return { message: 'You have been signed out.' };
   }
 
   async forgotPassword({ email }: ForgotPasswordDto) {
@@ -84,7 +107,7 @@ export class AuthService {
       where: { email: email.trim().toLowerCase() },
     });
 
-    if (user) {
+    if (user?.email) {
       const token = randomBytes(32).toString('hex');
       const tokenHash = createHash('sha256').update(token).digest('hex');
       await this.prisma.passwordResetToken.deleteMany({

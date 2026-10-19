@@ -14,10 +14,9 @@ import type {
 } from "@/types/backend";
 import type { ResourceSubmission } from "@/types/submission";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = "/api/backend";
 export const PASSWORD_RESET_ENABLED =
   process.env.NEXT_PUBLIC_PASSWORD_RESET_ENABLED === "true";
-const TOKEN_KEY = "swepack-access-token";
 
 export class ApiError extends Error {
   constructor(
@@ -29,21 +28,6 @@ export class ApiError extends Error {
   }
 }
 
-export function getAccessToken() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
-}
-
-export function setAccessToken(token: string) {
-  window.localStorage.setItem(TOKEN_KEY, token);
-  window.dispatchEvent(new Event("swepack-auth-changed"));
-}
-
-export function clearAccessToken() {
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.dispatchEvent(new Event("swepack-auth-changed"));
-}
-
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -53,18 +37,20 @@ async function request<T>(
   if (options.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  if (authenticated) {
-    const token = getAccessToken();
-    if (!token) throw new ApiError("Authentication required.", 401);
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers,
+    credentials:
+      authenticated || path === "/auth/login" ? "same-origin" : "omit",
   });
   if (!response.ok) {
-    if (response.status === 401) clearAccessToken();
+    if (
+      response.status === 401 &&
+      authenticated &&
+      typeof window !== "undefined"
+    ) {
+      window.dispatchEvent(new Event("swepack-auth-expired"));
+    }
     let message = "The request could not be completed.";
     try {
       const body = (await response.json()) as { message?: string | string[] };
@@ -82,10 +68,17 @@ export function login(input: LoginInput) {
   return request<AuthResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
-  }).then((response) => {
-    setAccessToken(response.accessToken);
-    return response;
   });
+}
+
+export function logout() {
+  return request<{ message: string }>("/auth/logout", { method: "POST" }, true);
+}
+
+export function startGithubLogin() {
+  window.location.assign(
+    new URL("/api/auth/github/start", window.location.origin),
+  );
 }
 
 export function requestPasswordReset(email: string) {

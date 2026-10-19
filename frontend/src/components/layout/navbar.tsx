@@ -1,40 +1,39 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { LogOut, Menu, Plus, User, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { clearAccessToken, fetchCurrentUser } from "@/lib/api";
+import { logout } from "@/lib/api";
 import { useAuthSession } from "@/components/providers/auth-session-provider";
 
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { token, isReady } = useAuthSession();
+  const { user: currentUser, isReady, clearSession } = useAuthSession();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
-  const currentUserQuery = useQuery({
-    queryKey: ["current-user"],
-    queryFn: fetchCurrentUser,
-    enabled: isReady && Boolean(token),
-    retry: false,
-  });
-  const currentUser = currentUserQuery.data;
 
   function isActive(path: string) {
     return path === "/" ? pathname === "/" : pathname.startsWith(path);
   }
 
-  function handleSignOut() {
-    clearAccessToken();
+  async function handleSignOut() {
+    let logoutFailed = false;
+    try {
+      await logout();
+    } catch {
+      logoutFailed = true;
+    }
+    clearSession();
     queryClient.removeQueries({ queryKey: ["current-user"] });
     queryClient.removeQueries({ queryKey: ["saved-resources"] });
     setIsAccountMenuOpen(false);
     setIsMenuOpen(false);
-    router.push("/login");
+    router.push(logoutFailed ? "/login?logout=failed" : "/login");
   }
 
   return (
@@ -53,7 +52,7 @@ export function Navbar() {
         <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/submit") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/submit" onClick={() => setIsMenuOpen(false)}>
           Submit a link
         </Link>
-        {isReady && !token && (
+        {isReady && !currentUser && (
           <Link className={`rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-[var(--blue-soft)] hover:text-[var(--blue)] sm:flex sm:h-full sm:items-center sm:rounded-none sm:border-b-2 sm:px-0 ${isActive("/login") ? "text-[var(--blue)] sm:border-[var(--blue)]" : "border-transparent text-[var(--muted)]"}`} href="/login" onClick={() => setIsMenuOpen(false)}>
             Sign in
           </Link>
@@ -85,7 +84,9 @@ export function Navbar() {
               >
                 <div className="border-b border-[var(--line)] px-3 py-2">
                   <p className="truncate text-xs font-semibold">{currentUser.name}</p>
-                  <p className="truncate text-[11px] text-[var(--muted)]">{currentUser.email}</p>
+                  {currentUser.email && (
+                    <p className="truncate text-[11px] text-[var(--muted)]">{currentUser.email}</p>
+                  )}
                 </div>
                 {currentUser.role === "ADMIN" && (
                   <Link
@@ -96,6 +97,17 @@ export function Navbar() {
                   >
                     Admin console
                   </Link>
+                )}
+                {!currentUser.githubConnected && (
+                  <form action="/api/auth/github/link" method="post">
+                    <button
+                      className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-muted)]"
+                      role="menuitem"
+                      type="submit"
+                    >
+                      Connect GitHub
+                    </button>
+                  </form>
                 )}
                 <button
                   className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50"

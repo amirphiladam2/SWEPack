@@ -6,15 +6,23 @@ import { useParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { ApiError, fetchCollectionResources, fetchCollections } from "@/lib/api";
 import { toResourceViewModel, type Resource } from "@/types/resource";
+import { useAuthSession } from "@/components/providers/auth-session-provider";
 
 export default function CollectionDetailPage() {
   const params = useParams<{ id: string }>();
+  const {
+    user: currentUser,
+    isReady,
+    error: sessionError,
+    refresh,
+  } = useAuthSession();
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [collectionName, setCollectionName] = useState("Collection");
 
   useEffect(() => {
+    if (!isReady || !currentUser) return;
     Promise.all([fetchCollectionResources(params.id), fetchCollections()])
       .then(([items, collections]) => {
         setResources(
@@ -33,7 +41,50 @@ export default function CollectionDetailPage() {
         );
       })
       .finally(() => setIsLoading(false));
-  }, [params.id]);
+  }, [params.id, isReady, currentUser]);
+
+  if (!isReady) {
+    return (
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-[var(--line)] text-sm text-[var(--muted)]" role="status">
+          Checking your account…
+        </div>
+      </main>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="mx-auto max-w-xl rounded-xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center shadow-sm">
+          <h1 className="text-2xl font-bold tracking-tight">
+            {sessionError ? "Could not check your sign-in" : "Sign in to view this collection"}
+          </h1>
+          <p className="mt-3 text-sm text-[var(--muted)]">
+            {sessionError
+              ? sessionError
+              : "Sign in to view your saved collection and its resources."}
+          </p>
+          {sessionError ? (
+            <button
+              className="mt-6 inline-flex h-10 items-center justify-center rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90"
+              onClick={() => void refresh()}
+              type="button"
+            >
+              Try again
+            </button>
+          ) : (
+            <Link
+              className="mt-6 inline-flex h-10 items-center justify-center rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90"
+              href="/login"
+            >
+              Sign in
+            </Link>
+          )}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">

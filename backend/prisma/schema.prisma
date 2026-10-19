@@ -32,21 +32,52 @@ enum UserRole {
   ADMIN
 }
 
+enum GithubOAuthPurpose {
+  LOGIN
+  LINK
+}
+
 model User {
-  id       String   @id @default(cuid())
-  name     String
-  email    String   @unique
-  password String
-  role     UserRole @default(USER)
+  id           String   @id @default(cuid())
+  name         String
+  email        String?  @unique
+  password     String?
+  role         UserRole @default(USER)
   tokenVersion Int @default(0)
 
-  resources      Resource[]
-  savedResources SavedResource[]
-  collections    Collection[]
+  resources           Resource[]
+  savedResources     SavedResource[]
+  collections        Collection[]
   passwordResetTokens PasswordResetToken[]
+  githubAccounts     GithubAccount[]
+  githubOAuthStates  GithubOAuthState[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model GithubAccount {
+  id                String   @id @default(cuid())
+  provider          String   @default("GITHUB")
+  providerAccountId String
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model GithubOAuthState {
+  id        String   @id @default(cuid())
+  stateHash String   @unique
+  purpose   GithubOAuthPurpose
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }
 
 model PasswordResetToken {

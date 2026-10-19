@@ -11,9 +11,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { resourceTypes } from "@/types/backend";
 import type { ResourceSubmission } from "@/types/submission";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
+import { useAuthSession } from "@/components/providers/auth-session-provider";
 
 export function SubmitResourceForm() {
   const queryClient = useQueryClient();
+  const {
+    user: currentUser,
+    isReady,
+    error: sessionError,
+    refresh,
+  } = useAuthSession();
   const { categories, tags } = useTaxonomy();
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"

@@ -15,7 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: {
     sub: string;
-    email: string;
+    email: string | null;
     role: string;
     name?: string;
     tokenVersion?: number;
@@ -28,6 +28,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         email: true,
         role: true,
         tokenVersion: true,
+        githubAccounts: {
+          select: { id: true },
+          take: 1,
+        },
       },
     });
     if (!user || user.tokenVersion !== (payload.tokenVersion ?? 0)) {
@@ -38,6 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       role: user.role,
       name: user.name,
+      githubConnected: user.githubAccounts.length > 0,
     };
   }
 }

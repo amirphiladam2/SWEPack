@@ -1,7 +1,9 @@
-import "dotenv/config";
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { AppModule } from './app.module';
+import { NoCacheInterceptor } from './common/no-cache.interceptor';
+import type { Application } from 'express';
 
 function readPort(value: string | undefined) {
   const port = Number(value ?? 3001);
@@ -27,11 +29,39 @@ function validateEnvironment() {
   if (!process.env.FRONTEND_URL) {
     throw new Error('FRONTEND_URL is required.');
   }
+  const frontendUrl = new URL(process.env.FRONTEND_URL);
+  if (
+    frontendUrl.pathname !== '/' ||
+    frontendUrl.search ||
+    frontendUrl.hash ||
+    frontendUrl.origin !== process.env.FRONTEND_URL.replace(/\/$/, '')
+  ) {
+    throw new Error('FRONTEND_URL must contain only the frontend origin.');
+  }
   if (
     process.env.NODE_ENV === 'production' &&
-    !process.env.FRONTEND_URL.startsWith('https://')
+    frontendUrl.protocol !== 'https:'
   ) {
     throw new Error('FRONTEND_URL must use HTTPS in production.');
+  }
+  const githubOAuthValues = [
+    process.env.GITHUB_CLIENT_ID,
+    process.env.GITHUB_CLIENT_SECRET,
+    process.env.GITHUB_CALLBACK_URL,
+  ];
+  if (githubOAuthValues.some(Boolean) && !githubOAuthValues.every(Boolean)) {
+    throw new Error(
+      'GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, and GITHUB_CALLBACK_URL must be configured together.',
+    );
+  }
+  if (process.env.GITHUB_CALLBACK_URL) {
+    const callbackUrl = new URL(process.env.GITHUB_CALLBACK_URL);
+    if (
+      process.env.NODE_ENV === 'production' &&
+      callbackUrl.protocol !== 'https:'
+    ) {
+      throw new Error('GITHUB_CALLBACK_URL must use HTTPS in production.');
+    }
   }
 }
 
@@ -40,17 +70,19 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   if (process.env.NODE_ENV === 'production') {
-    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+    const expressApp = app.getHttpAdapter().getInstance() as Application;
+    expressApp.set('trust proxy', 1);
   }
 
   app.enableCors({
     origin: process.env.FRONTEND_URL,
   });
+  app.useGlobalInterceptors(new NoCacheInterceptor());
 
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted:true,
+      forbidNonWhitelisted: true,
       transform: true,
     }),
   );
@@ -58,4 +90,4 @@ async function bootstrap() {
   await app.listen(readPort(process.env.PORT));
 }
 
-bootstrap();
+void bootstrap();

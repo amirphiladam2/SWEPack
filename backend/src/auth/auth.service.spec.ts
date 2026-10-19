@@ -4,7 +4,10 @@ jest.mock('@nestjs/jwt', () => ({
 }));
 
 import { JwtService } from '@nestjs/jwt';
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { AuthService } from './auth.service';
@@ -69,7 +72,9 @@ describe('AuthService', () => {
     });
 
     const created = prisma.user.create.mock.calls[0][0].data;
-    await expect(bcrypt.compare('strong-password', created.password)).resolves.toBe(true);
+    await expect(
+      bcrypt.compare('strong-password', created.password),
+    ).resolves.toBe(true);
     expect(created.email).toBe('member@example.com');
     expect(result).not.toHaveProperty('password');
   });
@@ -101,10 +106,38 @@ describe('AuthService', () => {
     expect(result.accessToken).toBe('jwt-token');
   });
 
+  it('does not accept a password for a passwordless GitHub account', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'github-user',
+      name: 'GitHub member',
+      email: null,
+      role: 'USER',
+      password: null,
+      tokenVersion: 0,
+    });
+
+    await expect(
+      service.login({ email: 'member@example.com', password: 'password' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(jwtService.signAsync).not.toHaveBeenCalled();
+  });
+
+  it('revokes existing sessions on logout', async () => {
+    await expect(service.logout('user-1')).resolves.toEqual({
+      message: 'You have been signed out.',
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { tokenVersion: { increment: 1 } },
+    });
+  });
+
   it('uses a generic response when no recovery account exists', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
 
-    const result = await service.forgotPassword({ email: 'nobody@example.com' });
+    const result = await service.forgotPassword({
+      email: 'nobody@example.com',
+    });
 
     expect(result.message).toBe(
       'If an account exists for that email, and email delivery is available, reset instructions will arrive shortly.',
@@ -132,7 +165,9 @@ describe('AuthService', () => {
     });
     emailService.sendPasswordResetEmail.mockResolvedValue(false);
 
-    const result = await service.forgotPassword({ email: 'MEMBER@example.com' });
+    const result = await service.forgotPassword({
+      email: 'MEMBER@example.com',
+    });
 
     expect(result.message).toBe(
       'If an account exists for that email, and email delivery is available, reset instructions will arrive shortly.',

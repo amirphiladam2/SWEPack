@@ -8,6 +8,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { EmailService } from './email.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './dto/roles.guard';
+import { GithubOAuthService } from './github-oauth.service';
 
 @Global()
 @Module({
@@ -19,7 +20,14 @@ import { RolesGuard } from './dto/roles.guard';
     PrismaModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, EmailService],
+  providers: [
+    AuthService,
+    GithubOAuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+    EmailService,
+  ],
   exports: [JwtAuthGuard, RolesGuard],
 })
 export class AuthModule {}

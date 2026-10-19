@@ -42,7 +42,12 @@ export type BackendResource = {
   notes: string | null;
   category: BackendCategory | null;
   tags: Array<{ tag: BackendTag }>;
-  submittedBy?: { id: string; name: string; email?: string; role?: string } | null;
+  submittedBy?: {
+    id: string;
+    name: string;
+    email?: string | null;
+    role?: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -93,15 +98,15 @@ export type RegisterInput = {
 };
 
 export type AuthResponse = {
-  accessToken: string;
   user: UserProfile;
 };
 
 export type UserProfile = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: "USER" | "ADMIN";
+  githubConnected?: boolean;
 };
 
 export type BackendCollection = {

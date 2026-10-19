@@ -9,8 +9,15 @@ import { ApiError, createCollection, deleteCollection, fetchCollections } from "
 import type { BackendCollection } from "@/types/backend";
 import { CollectionCreateForm } from "@/components/collections/collection-create-form";
 import { CollectionList } from "@/components/collections/collection-list";
+import { useAuthSession } from "@/components/providers/auth-session-provider";
 
 export default function CollectionsPage() {
+  const {
+    user: currentUser,
+    isReady,
+    error: sessionError,
+    refresh,
+  } = useAuthSession();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
@@ -18,6 +25,7 @@ export default function CollectionsPage() {
   const collectionsQuery = useQuery({
     queryKey: ["collections"],
     queryFn: fetchCollections,
+    enabled: isReady && Boolean(currentUser),
   });
   const collections = collectionsQuery.data ?? [];
   const createMutation = useMutation({
@@ -64,6 +72,49 @@ export default function CollectionsPage() {
           : "We couldn't delete this collection.",
       );
     }
+  }
+
+  if (!isReady) {
+    return (
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-[var(--line)] text-sm text-[var(--muted)]" role="status">
+          Checking your account…
+        </div>
+      </main>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+        <div className="mx-auto max-w-xl rounded-xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center shadow-sm">
+          <h1 className="text-2xl font-bold tracking-tight">
+            {sessionError ? "Could not check your sign-in" : "Sign in to view collections"}
+          </h1>
+          <p className="mt-3 text-sm text-[var(--muted)]">
+            {sessionError
+              ? sessionError
+              : "Sign in to create and manage your saved collections."}
+          </p>
+          {sessionError ? (
+            <button
+              className="mt-6 inline-flex h-10 items-center justify-center rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90"
+              onClick={() => void refresh()}
+              type="button"
+            >
+              Try again
+            </button>
+          ) : (
+            <Link
+              className="mt-6 inline-flex h-10 items-center justify-center rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90"
+              href="/login"
+            >
+              Sign in
+            </Link>
+          )}
+        </div>
+      </main>
+    );
   }
 
   return (

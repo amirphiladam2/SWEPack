@@ -1,33 +1,64 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
+import { FaGithub } from "react-icons/fa";
 import { useAuthSession } from "@/components/providers/auth-session-provider";
 import {
   ApiError,
-  fetchCurrentUser,
   login,
   PASSWORD_RESET_ENABLED,
   register,
+  startGithubLogin,
 } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { token, isReady } = useAuthSession();
-  const currentUserQuery = useQuery({
-    queryKey: ["current-user"],
-    queryFn: fetchCurrentUser,
-    enabled: isReady && Boolean(token),
-    retry: false,
-  });
+  const {
+    user: currentUser,
+    isReady,
+    error: sessionError,
+    refresh,
+  } = useAuthSession();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGithubLoading, setIsGithubLoading] = useState(false);
+  const [oauthState, setOauthState] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextOauthState = params.get("oauth") ?? "";
+    const logoutFailed = params.get("logout") === "failed";
+    const timeout = window.setTimeout(() => {
+      setOauthState(nextOauthState);
+      if (logoutFailed) {
+        setError("You were signed out on this device, but the server could not revoke the session.");
+      }
+    }, 0);
+    if (params.has("oauth") || params.has("logout")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  const oauthMessages: Record<string, string> = {
+    success: "You signed in with GitHub.",
+    linked: "Your GitHub account is now connected.",
+    cancelled: "GitHub sign-in was cancelled. You can try again or use email and password.",
+    invalid_state: "The GitHub sign-in expired or could not be verified. Please try again.",
+    unavailable: "GitHub sign-in is not available right now. Please try again later.",
+    expired: "Your sign-in session expired. Sign in again and retry connecting GitHub.",
+    link_failed: "GitHub could not be connected. Please try again.",
+    link_conflict: "That GitHub account is already connected to another SWEPack account.",
+    failed: "GitHub sign-in could not be completed. Please try again.",
+  };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,8 +84,12 @@ export default function LoginPage() {
         return;
       }
 
-      const response = await login({ email, password });
-      queryClient.setQueryData(["current-user"], response.user);
+      await login({ email, password });
+      const user = await refresh();
+      if (!user) {
+        throw new Error("Your sign-in was not restored. Please try again.");
+      }
+      queryClient.setQueryData(["current-user"], user);
       router.push("/");
     } catch (requestError) {
       setError(
@@ -67,7 +102,7 @@ export default function LoginPage() {
     }
   }
 
-  if (!isReady || (token && currentUserQuery.isPending)) {
+  if (!isReady) {
     return (
       <main className="mx-auto w-full max-w-[1000px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
         <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-[var(--line)] text-sm text-[var(--muted)]">
@@ -77,7 +112,7 @@ export default function LoginPage() {
     );
   }
 
-  if (currentUserQuery.data) {
+  if (currentUser) {
     return (
       <main className="mx-auto w-full max-w-[1000px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
         <div className="mx-auto max-w-xl rounded-xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center shadow-sm">
@@ -88,8 +123,16 @@ export default function LoginPage() {
             You’re already signed in
           </h1>
           <p className="mt-3 text-sm text-[var(--muted)]">
-            Signed in as {currentUserQuery.data.email}.
+            Signed in as {currentUser.email ?? currentUser.name}.
           </p>
+          {oauthState && oauthMessages[oauthState] && (
+            <p
+              className={`mt-3 rounded-lg p-3 text-xs ${["success", "linked"].includes(oauthState) ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}
+              role="status"
+            >
+              {oauthMessages[oauthState]}
+            </p>
+          )}
           <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
             <Link
               className="inline-flex h-10 items-center justify-center rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90"
@@ -97,7 +140,7 @@ export default function LoginPage() {
             >
               Browse resources
             </Link>
-            {currentUserQuery.data.role === "ADMIN" && (
+            {currentUser.role === "ADMIN" && (
               <Link
                 className="inline-flex h-10 items-center justify-center rounded-lg border border-[var(--line)] px-4 text-xs font-semibold hover:bg-[var(--surface-muted)]"
                 href="/admin"
@@ -145,6 +188,32 @@ export default function LoginPage() {
               Sign in to save resources and submit resources for review.
             </p>
           </div>
+          {mode === "login" && (
+            <>
+              <button
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--text)] px-4 text-sm font-semibold text-[var(--surface)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
+                disabled={isGithubLoading}
+                onClick={() => {
+                  setIsGithubLoading(true);
+                  startGithubLogin();
+                }}
+                type="button"
+              >
+                <FaGithub aria-hidden="true" size={18} />
+                {isGithubLoading ? "Redirecting to GitHub…" : "Continue with GitHub"}
+              </button>
+              <div className="my-5 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
+                <span className="h-px flex-1 bg-[var(--line)]" />
+                or use email
+                <span className="h-px flex-1 bg-[var(--line)]" />
+              </div>
+            </>
+          )}
+          {oauthState && oauthMessages[oauthState] && (
+            <p className={`mb-4 rounded-lg p-3 text-xs ${["success", "linked"].includes(oauthState) ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`} role="status">
+              {oauthMessages[oauthState]}
+            </p>
+          )}
           {mode === "register" && (
             <label className="mt-4 grid gap-2 text-xs font-semibold">
               Name
@@ -190,9 +259,9 @@ export default function LoginPage() {
               />
             </label>
           )}
-          {token && currentUserQuery.error && (
+          {sessionError && (
             <p className="mt-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-800" role="status">
-              Your saved session is no longer valid. Please sign in again.
+              {sessionError}
             </p>
           )}
           {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700" role="alert">{error}</p>}
