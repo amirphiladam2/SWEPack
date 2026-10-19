@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function SiteFooter() {
   return (
     <footer className="mt-auto border-t border-[var(--line)] bg-[var(--surface)] px-5 py-7 text-xs text-[var(--muted)] sm:px-8">
@@ -6,8 +8,8 @@ export function SiteFooter() {
         SWEPack is a community-built index of resources for modern software teams.
       </span>
       <nav className="flex gap-5">
-        <a className="transition-colors hover:text-[var(--text)]" href="#about">About</a>
-        <a className="transition-colors hover:text-[var(--text)]" href="https://github.com" target="_blank" rel="noreferrer">
+        <Link className="transition-colors hover:text-[var(--text)]" href="/about">About</Link>
+        <a className="transition-colors hover:text-[var(--text)]" href="https://github.com/amirphiladam2/SWEPack" target="_blank" rel="noreferrer">
           GitHub
         </a>
       </nav>
