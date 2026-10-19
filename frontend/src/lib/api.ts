@@ -136,7 +136,7 @@ export function fetchResources({
 }: ResourceQueryOptions): Promise<ResourceListResponse<ResourceLibraryItem>> {
   const params = new URLSearchParams({
     page: String(page),
-    limit: "50",
+    limit: "12",
     sort,
   });
   if (search) params.set("search", search);

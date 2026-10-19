@@ -148,7 +148,7 @@ export default function ResourcesPage() {
               hasFilters={Boolean(query || category)}
               onClearFilters={clearFilters}
             />
-            {meta && meta.totalPages > 1 && (
+            {meta && meta.totalPages > 0 && (
               <nav className="mt-6 flex items-center justify-center gap-4 text-xs text-[var(--muted)]" aria-label="Resource pages">
                 <button
                   className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 font-semibold text-[var(--text)] hover:bg-[var(--surface-muted)]"
