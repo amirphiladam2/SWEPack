@@ -177,6 +177,33 @@ export class AuthService {
     return { message: 'You have been signed out.' };
   }
 
+  getAccountDeletionRequest(userId: string) {
+    return this.prisma.accountDeletionRequest.findUnique({
+      where: { userId },
+      select: {
+        status: true,
+        requestedAt: true,
+      },
+    });
+  }
+
+  async requestAccountDeletion(userId: string) {
+    const request = await this.prisma.accountDeletionRequest.upsert({
+      where: { userId },
+      update: {},
+      create: { userId },
+      select: {
+        status: true,
+        requestedAt: true,
+      },
+    });
+    return {
+      ...request,
+      message:
+        'Your account deletion request has been submitted for review. Your account remains active until the review is complete.',
+    };
+  }
+
   async forgotPassword({ email }: ForgotPasswordDto) {
     this.assertPasswordRecoveryEnabled();
 

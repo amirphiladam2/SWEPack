@@ -39,6 +39,21 @@ export class AuthController {
     return this.authService.logout(user.userId);
   }
 
+  @Get('deletion-request')
+  @UseGuards(JwtAuthGuard)
+  getAccountDeletionRequest(@Req() request: Request) {
+    const user = request.user as AuthenticatedUser;
+    return this.authService.getAccountDeletionRequest(user.userId);
+  }
+
+  @Post('deletion-request')
+  @UseGuards(ThrottlerGuard, JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  requestAccountDeletion(@Req() request: Request) {
+    const user = request.user as AuthenticatedUser;
+    return this.authService.requestAccountDeletion(user.userId);
+  }
+
   @Get('github/authorize')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

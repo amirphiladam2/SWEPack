@@ -37,6 +37,12 @@ enum GithubOAuthPurpose {
   LINK
 }
 
+enum AccountDeletionRequestStatus {
+  PENDING
+  IN_REVIEW
+  COMPLETED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -44,17 +50,29 @@ model User {
   password     String?
   firebaseUid  String?  @unique
   role         UserRole @default(USER)
-  tokenVersion Int @default(0)
+  tokenVersion Int      @default(0)
 
   resources           Resource[]
-  savedResources     SavedResource[]
-  collections        Collection[]
+  savedResources      SavedResource[]
+  collections         Collection[]
   passwordResetTokens PasswordResetToken[]
-  githubAccounts     GithubAccount[]
-  githubOAuthStates  GithubOAuthState[]
+  githubAccounts      GithubAccount[]
+  githubOAuthStates   GithubOAuthState[]
+  deletionRequest     AccountDeletionRequest?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AccountDeletionRequest {
+  id          String                       @id @default(cuid())
+  userId      String                       @unique
+  status      AccountDeletionRequestStatus @default(PENDING)
+  requestedAt DateTime                     @default(now())
+  reviewedAt  DateTime?
+  user        User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, requestedAt])
 }
 
 model GithubAccount {
@@ -70,13 +88,13 @@ model GithubAccount {
 }
 
 model GithubOAuthState {
-  id        String   @id @default(cuid())
-  stateHash String   @unique
+  id        String             @id @default(cuid())
+  stateHash String             @unique
   purpose   GithubOAuthPurpose
   userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime           @default(now())
 
   @@index([expiresAt])
 }

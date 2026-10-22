@@ -26,6 +26,10 @@ describe('AuthService', () => {
       delete: jest.fn(),
       deleteMany: jest.fn(),
     },
+    accountDeletionRequest: {
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
   const jwtService = { signAsync: jest.fn() };
@@ -226,6 +230,44 @@ describe('AuthService', () => {
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
       data: { tokenVersion: { increment: 1 } },
+    });
+  });
+
+  it('returns the deletion request belonging to the signed-in user', async () => {
+    const requestedAt = new Date('2026-10-22T12:00:00.000Z');
+    prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+      status: 'PENDING',
+      requestedAt,
+    });
+
+    await expect(service.getAccountDeletionRequest('user-1')).resolves.toEqual({
+      status: 'PENDING',
+      requestedAt,
+    });
+    expect(prisma.accountDeletionRequest.findUnique).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+      select: { status: true, requestedAt: true },
+    });
+  });
+
+  it('submits an idempotent account deletion request for the signed-in user', async () => {
+    const requestedAt = new Date('2026-10-22T12:00:00.000Z');
+    prisma.accountDeletionRequest.upsert.mockResolvedValue({
+      status: 'PENDING',
+      requestedAt,
+    });
+
+    await expect(service.requestAccountDeletion('user-1')).resolves.toEqual({
+      status: 'PENDING',
+      requestedAt,
+      message:
+        'Your account deletion request has been submitted for review. Your account remains active until the review is complete.',
+    });
+    expect(prisma.accountDeletionRequest.upsert).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+      update: {},
+      create: { userId: 'user-1' },
+      select: { status: true, requestedAt: true },
     });
   });
 

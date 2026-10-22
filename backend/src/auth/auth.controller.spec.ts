@@ -33,4 +33,15 @@ describe('AuthController', () => {
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
+
+  it('exposes account deletion request endpoints', () => {
+    expect(
+      Object.getOwnPropertyNames(Object.getPrototypeOf(controller)),
+    ).toEqual(
+      expect.arrayContaining([
+        'getAccountDeletionRequest',
+        'requestAccountDeletion',
+      ]),
+    );
+  });
 });

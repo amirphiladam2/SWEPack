@@ -333,6 +333,27 @@ export function fetchCurrentUser() {
   return request<UserProfile>("/auth/me", {}, true);
 }
 
+export type AccountDeletionRequest = {
+  status: "PENDING" | "IN_REVIEW" | "COMPLETED";
+  requestedAt: string;
+};
+
+export function fetchAccountDeletionRequest() {
+  return request<AccountDeletionRequest | null>(
+    "/auth/deletion-request",
+    {},
+    true,
+  );
+}
+
+export function requestAccountDeletion() {
+  return request<AccountDeletionRequest & { message: string }>(
+    "/auth/deletion-request",
+    { method: "POST" },
+    true,
+  );
+}
+
 export function fetchAdminResources(search = "", status = "", page = 1) {
   const params = new URLSearchParams({ page: String(page), limit: "20" });
   if (search) params.set("search", search);

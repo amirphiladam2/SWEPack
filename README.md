@@ -214,6 +214,7 @@ The backend exposes a REST API. Authenticated routes require a valid JWT; admini
 | --- | --- |
 | Health | `GET /health` |
 | Authentication | Firebase email/password sign-up and sign-in; `POST /auth/login` migrates existing credentials, `POST /auth/firebase/exchange` exchanges Firebase ID tokens, `POST /auth/logout`, `GET /auth/me`; GitHub OAuth initiation/exchange is mediated by the frontend |
+| Account deletion | `GET /auth/deletion-request`, `POST /auth/deletion-request` (authenticated; submission creates a request for review and does not immediately delete account data) |
 | Password reset | `POST /auth/forgot-password`, `POST /auth/reset-password` (when enabled) |
 | Resources | `GET /resources`, `GET /resources/:id`, `POST /resources`, `POST /resources/metadata`, `GET /resources/mine`, `GET /resources/saved` |
 | Resource actions | `POST /resources/:id/save`, `DELETE /resources/:id/save`, `PATCH /resources/:id`, `DELETE /resources/:id` |
