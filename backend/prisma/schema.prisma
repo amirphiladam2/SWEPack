@@ -42,6 +42,7 @@ model User {
   name         String
   email        String?  @unique
   password     String?
+  firebaseUid  String?  @unique
   role         UserRole @default(USER)
   tokenVersion Int @default(0)
 

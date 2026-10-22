@@ -61,6 +61,9 @@ FRONTEND_URL=http://localhost:3000
 DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/swepack?schema=public
 JWT_SECRET=replace-with-a-random-secret-of-at-least-32-characters
 PASSWORD_RESET_ENABLED=false
+FIREBASE_PROJECT_ID=your_firebase_project_id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk@example.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nreplace-with-service-account-private-key\n-----END PRIVATE KEY-----\n"
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 GITHUB_CALLBACK_URL=
@@ -95,9 +98,13 @@ Set the API URL in `frontend\.env.local`:
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_PASSWORD_RESET_ENABLED=false
 FRONTEND_URL=http://localhost:3000
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_web_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_firebase_project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_firebase_project_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_firebase_web_app_id
 ```
 
-The browser talks to the API through a same-origin Next.js proxy. `NEXT_PUBLIC_API_URL` is used server-side by that proxy. The GitHub session is kept in a Secure, HttpOnly cookie on the frontend origin and is never exposed to browser JavaScript. The password-reset setting should remain disabled unless the backend email configuration is complete.
+The browser talks to the API through a same-origin Next.js proxy. `NEXT_PUBLIC_API_URL` is used server-side by that proxy. Firebase ID tokens are verified by the backend, which continues issuing a revocable HttpOnly session cookie for SWEPack APIs. Keep the Firebase Admin private key only in backend environment secrets. Existing password accounts migrate automatically after their first successful legacy sign-in. Keep the password-reset UI enabled only after Firebase recovery is configured; keep the backend password-reset endpoint and Resend sender enabled during the transition so unmigrated accounts can still recover.
 
 ### 3. Start both applications
 
@@ -136,6 +143,9 @@ Use `cp backend/.env.example backend/.env` and `cp frontend/.env.example fronten
 | `PASSWORD_RESET_ENABLED` | No | Set to `true` to enable the API's password-reset flow after email is configured; defaults to disabled. |
 | `RESEND_API` | For password reset | Resend API key used to send password-reset email. |
 | `EMAIL_FROM` | For password reset | Verified sender address used by Resend. |
+| `FIREBASE_PROJECT_ID` | Yes for Firebase auth | Firebase project ID used by the Admin SDK. |
+| `FIREBASE_CLIENT_EMAIL` | Yes for Firebase auth | Service-account email for the Firebase Admin SDK. |
+| `FIREBASE_PRIVATE_KEY` | Yes for Firebase auth | Firebase service-account private key; keep it only in backend secret settings. |
 | `GITHUB_CLIENT_ID` | Optional | GitHub OAuth App client ID. |
 | `GITHUB_CLIENT_SECRET` | Optional | GitHub OAuth App secret. Keep this only in the backend secret store. |
 | `GITHUB_CALLBACK_URL` | Optional | Exact GitHub OAuth callback URL. For local development, use `http://localhost:3000/api/auth/github/callback`; for production, use `https://swepack.vercel.app/api/auth/github/callback`. |
@@ -147,6 +157,10 @@ Use `cp backend/.env.example backend/.env` and `cp frontend/.env.example fronten
 | `NEXT_PUBLIC_API_URL` | Yes for production | Base URL of the backend API, without an endpoint path. Local development defaults to `http://localhost:3001`. Production builds require an HTTPS URL. |
 | `NEXT_PUBLIC_PASSWORD_RESET_ENABLED` | No | Set to `true` to expose password-reset UI. Keep this consistent with the backend setting. |
 | `FRONTEND_URL` | Yes for production | Exact frontend origin used by the same-origin API proxy to validate mutation requests; for production, `https://swepack.vercel.app`. |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Yes for Firebase auth | Firebase web app API key. |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Yes for Firebase auth | Firebase project auth domain. |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Yes for Firebase auth | Firebase project ID. |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes for Firebase auth | Firebase web app ID. |
 
 `NEXT_PUBLIC_*` values are included in browser-facing code. Never put secrets in frontend environment variables.
 
@@ -199,7 +213,7 @@ The backend exposes a REST API. Authenticated routes require a valid JWT; admini
 | Area | Routes |
 | --- | --- |
 | Health | `GET /health` |
-| Authentication | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`; GitHub OAuth initiation/exchange is mediated by the frontend |
+| Authentication | Firebase email/password sign-up and sign-in; `POST /auth/login` migrates existing credentials, `POST /auth/firebase/exchange` exchanges Firebase ID tokens, `POST /auth/logout`, `GET /auth/me`; GitHub OAuth initiation/exchange is mediated by the frontend |
 | Password reset | `POST /auth/forgot-password`, `POST /auth/reset-password` (when enabled) |
 | Resources | `GET /resources`, `GET /resources/:id`, `POST /resources`, `POST /resources/metadata`, `GET /resources/mine`, `GET /resources/saved` |
 | Resource actions | `POST /resources/:id/save`, `DELETE /resources/:id/save`, `PATCH /resources/:id`, `DELETE /resources/:id` |
@@ -220,7 +234,8 @@ The admin bootstrap requires `DATABASE_URL`, `ADMIN_NAME`, `ADMIN_EMAIL`, and `A
 ## Deployment
 
 - **Frontend:** Deploy the `frontend` directory as the Vercel project root. Set `NEXT_PUBLIC_API_URL=https://swepack.onrender.com` and `FRONTEND_URL=https://swepack.vercel.app`. Set the password-reset flag according to the backend configuration.
-- **Backend:** Deploy the `backend` directory to a Node.js host. Configure the backend environment variables in the host's secret settings, including GitHub credentials and `GITHUB_CALLBACK_URL=https://swepack.vercel.app/api/auth/github/callback`; build with `npm run build`, and start with `npm run start:prod`.
+- **Firebase:** Enable Email/Password in Firebase Authentication, add `swepack.vercel.app` to Authorized domains, and set the password-reset email template action URL to `https://swepack.vercel.app/reset-password`. Put the Firebase web app values in Vercel and the Admin service-account values in the backend's secret settings.
+- **Backend:** Deploy the `backend` directory to a Node.js host. Configure the backend environment variables in the host's secret settings, including Firebase and GitHub credentials and `GITHUB_CALLBACK_URL=https://swepack.vercel.app/api/auth/github/callback`; build with `npm run build`, and start with `npm run start:prod`.
 - **Database:** Apply committed migrations to the intended database with `npx prisma migrate deploy --config prisma7.config.ts` from `backend`. For production, run migrations as a controlled release step before routing traffic to code that depends on them.
 - Configure `FRONTEND_URL=https://swepack.vercel.app` on the API as well, so CORS and same-origin mutation validation agree. Configure HTTPS and secrets on the hosting platforms; do not commit production environment files.
 
@@ -232,7 +247,7 @@ Before enabling GitHub sign-in in production:
 4. Review the new `GithubAccount`, `GithubOAuthState`, and nullable email/password migration, then apply it to the intended database with the controlled `migrate deploy` release step. Do not run `migrate dev` or a reset against production.
 5. Deploy the backend, then the frontend. Test first-time and returning GitHub users, account linking, password sign-in, logout, resource operations, and an existing admin account.
 
-Password-reset links are only functional when `PASSWORD_RESET_ENABLED=true` is set on the API, email credentials and sender are configured, and the frontend reset UI is enabled.
+Firebase password-reset links require Firebase recovery configuration and the frontend reset UI. During migration, keep `PASSWORD_RESET_ENABLED=true` and configure Resend so accounts that have not migrated yet can recover; the Firebase reset email path works independently for migrated accounts.
 
 ## Contributing
 

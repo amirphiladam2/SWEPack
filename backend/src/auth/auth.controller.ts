@@ -4,12 +4,12 @@ import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
 import { GithubOAuthService } from './github-oauth.service';
 import { GithubExchangeDto } from './dto/github-exchange.dto';
+import { FirebaseTokenDto } from './dto/firebase-token.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -18,14 +18,18 @@ export class AuthController {
     private readonly githubOAuthService: GithubOAuthService,
   ) {}
 
-  @Post('register')
-  register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
-  }
-
   @Post('login')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Post('firebase/exchange')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  exchangeFirebaseToken(@Body() dto: FirebaseTokenDto) {
+    return this.authService.exchangeFirebaseToken(dto.idToken);
   }
 
   @Post('logout')

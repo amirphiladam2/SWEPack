@@ -80,7 +80,9 @@ export default function LoginPage() {
       if (mode === "register") {
         await register({ name, email, password });
         setMode("login");
-        setSuccess("Account created. You can now sign in.");
+        setSuccess(
+          "Account created. Check your email to verify your address, then sign in.",
+        );
         return;
       }
 
@@ -92,10 +94,24 @@ export default function LoginPage() {
       queryClient.setQueryData(["current-user"], user);
       router.push("/");
     } catch (requestError) {
+      const code =
+        requestError && typeof requestError === "object" && "code" in requestError
+          ? requestError.code
+          : undefined;
+      const firebaseMessages: Record<string, string> = {
+        "auth/email-already-in-use":
+          "An account with this email already exists. Sign in or reset your password.",
+        "auth/too-many-requests":
+          "Too many attempts. Please wait a while and try again.",
+        "auth/network-request-failed":
+          "Firebase could not be reached. Check your connection and try again.",
+      };
       setError(
         requestError instanceof ApiError
           ? requestError.message
-          : "Authentication failed. Please try again.",
+          : typeof code === "string" && firebaseMessages[code]
+            ? firebaseMessages[code]
+            : "Authentication failed. Please try again.",
       );
     } finally {
       setIsSubmitting(false);

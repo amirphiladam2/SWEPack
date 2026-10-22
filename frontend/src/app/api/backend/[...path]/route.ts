@@ -59,18 +59,18 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
     });
 
     if (
-      endpoint === "auth/login" &&
+      endpoint === "auth/firebase/exchange" &&
       method === "POST" &&
       upstream.ok
     ) {
-      const login = (await upstream.json()) as {
+      const exchange = (await upstream.json()) as {
         accessToken?: unknown;
         user?: unknown;
       };
       if (
-        typeof login.accessToken !== "string" ||
-        !login.user ||
-        typeof login.user !== "object"
+        typeof exchange.accessToken !== "string" ||
+        !exchange.user ||
+        typeof exchange.user !== "object"
       ) {
         return NextResponse.json(
           { message: "The sign-in response from the API was invalid." },
@@ -78,12 +78,12 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
         );
       }
       const response = NextResponse.json(
-        { user: login.user },
+        { user: exchange.user },
         { headers: { "Cache-Control": "no-store" } },
       );
       response.cookies.set(
         SESSION_COOKIE_NAME,
-        login.accessToken,
+        exchange.accessToken,
         secureCookieOptions(SESSION_MAX_AGE_SECONDS),
       );
       return response;

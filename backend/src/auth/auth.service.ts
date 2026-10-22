@@ -12,8 +12,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { FirebaseAdminService } from './firebase-admin.service';
 
 @Injectable()
 export class AuthService {
@@ -23,33 +23,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
+    private readonly firebaseAdmin: FirebaseAdminService,
   ) {}
-
-  async register({ name, email, password }: RegisterDto) {
-    const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
-    if (existingUser) {
-      throw new ConflictException('A user with this email already exists.');
-    }
-
-    const user = await this.prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: normalizedEmail,
-        password: await bcrypt.hash(password, 10),
-      },
-    });
-
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      createdAt: user.createdAt,
-    };
-  }
 
   async login({ email, password }: LoginDto) {
     const user = await this.prisma.user.findUnique({
@@ -61,6 +36,99 @@ export class AuthService {
       !(await bcrypt.compare(password, user.password))
     ) {
       throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    if (!user.email) {
+      throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    const migration = await this.firebaseAdmin.createLegacyMigrationToken({
+      uid: user.id,
+      email: user.email,
+      password,
+      displayName: user.name,
+    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          firebaseUid: migration.uid,
+          password: null,
+          tokenVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.passwordResetToken.deleteMany({
+        where: { userId: user.id },
+      }),
+    ]);
+
+    return {
+      customToken: migration.customToken,
+    };
+  }
+
+  async exchangeFirebaseToken(idToken: string) {
+    const decoded = await this.firebaseAdmin.verifyIdToken(idToken);
+    const email =
+      typeof decoded.email === 'string'
+        ? decoded.email.trim().toLowerCase()
+        : null;
+    if (!email) {
+      throw new UnauthorizedException(
+        'A verified email address is required to use SWEPack.',
+      );
+    }
+
+    let user = await this.prisma.user.findUnique({
+      where: { firebaseUid: decoded.uid },
+    });
+    if (!user) {
+      if (decoded.email_verified !== true) {
+        throw new UnauthorizedException(
+          'Verify your email address before signing in.',
+        );
+      }
+
+      const existingUser = await this.prisma.user.findUnique({
+        where: { email },
+      });
+      if (existingUser) {
+        if (
+          existingUser.firebaseUid &&
+          existingUser.firebaseUid !== decoded.uid
+        ) {
+          throw new ConflictException(
+            'This email is linked to a different Firebase account.',
+          );
+        }
+        user = await this.prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            firebaseUid: decoded.uid,
+            password: null,
+            tokenVersion: { increment: 1 },
+          },
+        });
+        await this.prisma.passwordResetToken.deleteMany({
+          where: { userId: existingUser.id },
+        });
+      } else {
+        user = await this.prisma.user.create({
+          data: {
+            name:
+              typeof decoded.name === 'string' && decoded.name.trim()
+                ? decoded.name.trim().slice(0, 100)
+                : email.split('@')[0],
+            email,
+            firebaseUid: decoded.uid,
+          },
+        });
+      }
+    } else if (decoded.email_verified === true && user.email !== email) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { email },
+      });
     }
 
     const accessToken = await this.createAccessToken(user);
@@ -107,7 +175,7 @@ export class AuthService {
       where: { email: email.trim().toLowerCase() },
     });
 
-    if (user?.email) {
+    if (user?.email && user.password) {
       const token = randomBytes(32).toString('hex');
       const tokenHash = createHash('sha256').update(token).digest('hex');
       await this.prisma.passwordResetToken.deleteMany({

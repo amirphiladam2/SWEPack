@@ -7,9 +7,15 @@ import {
   PASSWORD_RESET_ENABLED,
   resetPassword,
 } from "@/lib/api";
+import {
+  confirmPasswordReset,
+  verifyPasswordResetCode,
+} from "firebase/auth";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 function ResetPasswordForm() {
   const [token, setToken] = useState("");
+  const [actionCode, setActionCode] = useState("");
   const [isTokenReady, setIsTokenReady] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -18,15 +24,45 @@ function ResetPasswordForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const nextToken = new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
+    let active = true;
+    const params = new URLSearchParams(window.location.search);
+    const nextActionCode =
+      params.get("mode") === "resetPassword"
+        ? params.get("oobCode") ?? ""
+        : "";
+    const nextToken =
+      new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
     window.history.replaceState(null, "", window.location.pathname);
     queueMicrotask(() => {
+      if (!active) return;
       setToken(nextToken);
-      setError(
-        nextToken ? "" : "This password reset link is missing its token.",
-      );
-      setIsTokenReady(true);
+      setActionCode(nextActionCode);
+      if (nextActionCode) {
+        void Promise.resolve()
+          .then(() => verifyPasswordResetCode(getFirebaseAuth(), nextActionCode))
+          .then(() => {
+            if (active) setError("");
+          })
+          .catch(() => {
+            if (active) {
+              setError(
+                "This Firebase password reset link is invalid or expired.",
+              );
+            }
+          })
+          .finally(() => {
+            if (active) setIsTokenReady(true);
+          });
+      } else {
+        setError(
+          nextToken ? "" : "This password reset link is missing its token.",
+        );
+        setIsTokenReady(true);
+      }
     });
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -39,7 +75,15 @@ function ResetPasswordForm() {
     setIsSubmitting(true);
     setError("");
     try {
-      const response = await resetPassword(token, password);
+      let response: { message: string };
+      if (actionCode) {
+        await confirmPasswordReset(getFirebaseAuth(), actionCode, password);
+        response = {
+          message: "Your password has been reset. You can now sign in.",
+        };
+      } else {
+        response = await resetPassword(token, password);
+      }
       setMessage(response.message);
     } catch (requestError) {
       setError(
@@ -118,7 +162,7 @@ function ResetPasswordForm() {
               />
             </label>
             {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700" role="alert">{error}</p>}
-            <button className="mt-6 h-10 w-full rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90" disabled={isSubmitting || !token}>
+            <button className="mt-6 h-10 w-full rounded-lg bg-[var(--blue)] px-4 text-xs font-semibold text-white hover:opacity-90" disabled={isSubmitting || (!token && !actionCode) || Boolean(error)}>
               {isSubmitting ? "Resetting…" : "Reset password"}
             </button>
           </form>

@@ -21,6 +21,16 @@ if (process.env.NODE_ENV === "production") {
   ) {
     throw new Error("FRONTEND_URL must contain only the frontend origin.");
   }
+  for (const name of [
+    "NEXT_PUBLIC_FIREBASE_API_KEY",
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+    "NEXT_PUBLIC_FIREBASE_APP_ID",
+  ]) {
+    if (!process.env[name]) {
+      throw new Error(`${name} is required for production Firebase auth.`);
+    }
+  }
 }
 
 const nextConfig: NextConfig = {

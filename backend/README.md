@@ -95,17 +95,26 @@ The script upserts only the specified email, sets its role to `ADMIN`, hashes
 the password, and refuses local or non-Railway database URLs. It does not
 change public registration or expose an admin-promotion endpoint.
 
-### Password recovery
+### Firebase email/password authentication and password recovery
 
-Password reset emails use the Resend API. Configure `RESEND_API`, `EMAIL_FROM`,
-and the production `FRONTEND_URL` in the backend's secure environment. Keep
-`PASSWORD_RESET_ENABLED=false` until the sender domain is verified with Resend.
-Then set it to `true` in the backend and set
-`NEXT_PUBLIC_PASSWORD_RESET_ENABLED=true` in the frontend environment before
-rebuilding. Reset requests are rate-limited, tokens expire after 30 minutes,
-and the API returns a generic response whether or not an account exists. Reset
-links keep the secret token in the URL fragment rather than sending it to the
-web server.
+Configure Firebase email/password sign-in, the Firebase action email template,
+and the Firebase web and Admin SDK variables in the frontend and backend
+environments. The reset template action URL should be
+`https://swepack.vercel.app/reset-password` in production. Firebase ID tokens
+are verified by the API; the API continues issuing its own revocable,
+HttpOnly-cookie-backed session for SWEPack endpoints.
+
+Existing password accounts are migrated on their first successful sign-in:
+the API provisions or links a Firebase identity using the verified legacy
+password, removes the backend password hash, invalidates outstanding reset
+tokens and sessions, and returns a short-lived Firebase custom token. A verified
+Firebase email can also link to an existing SWEPack account with the same
+email, preserving its resources, collections, and role. New accounts must
+verify their email before first sign-in. The frontend sends Firebase recovery
+emails for migrated/new accounts and continues using the backend email recovery
+for legacy accounts that have not migrated. Keep `PASSWORD_RESET_ENABLED=true`
+and the Resend sender configured during the transition; these legacy settings
+can be retired once every password account has moved to Firebase.
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 

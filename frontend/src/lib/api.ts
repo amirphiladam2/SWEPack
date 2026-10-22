@@ -13,6 +13,20 @@ import type {
   UserProfile,
 } from "@/types/backend";
 import type { ResourceSubmission } from "@/types/submission";
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithCustomToken,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  type UserCredential,
+} from "firebase/auth";
+import {
+  getFirebaseAuth,
+  getInitializedFirebaseAuth,
+} from "@/lib/firebase";
 
 const API_URL = "/api/backend";
 export const PASSWORD_RESET_ENABLED =
@@ -41,7 +55,11 @@ async function request<T>(
     ...options,
     headers,
     credentials:
-      authenticated || path === "/auth/login" ? "same-origin" : "omit",
+      authenticated ||
+      path === "/auth/login" ||
+      path === "/auth/firebase/exchange"
+        ? "same-origin"
+        : "omit",
   });
   if (!response.ok) {
     if (
@@ -64,15 +82,92 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-export function login(input: LoginInput) {
-  return request<AuthResponse>("/auth/login", {
+async function migrateLegacyLogin(input: LoginInput) {
+  const migration = await request<{ customToken: string }>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
   });
+  return signInWithCustomToken(getFirebaseAuth(), migration.customToken);
 }
 
-export function logout() {
-  return request<{ message: string }>("/auth/logout", { method: "POST" }, true);
+async function exchangeFirebaseCredential(
+  credential: UserCredential,
+) {
+  const idToken = await credential.user.getIdToken();
+  return request<AuthResponse>("/auth/firebase/exchange", {
+    method: "POST",
+    body: JSON.stringify({ idToken }),
+  });
+}
+
+export async function login(input: LoginInput) {
+  let credential: UserCredential;
+  try {
+    credential = await signInWithEmailAndPassword(
+      getFirebaseAuth(),
+      input.email.trim().toLowerCase(),
+      input.password,
+    );
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? error.code
+        : undefined;
+    if (code !== "auth/user-not-found" && code !== "auth/invalid-credential") {
+      throw error;
+    }
+    credential = await migrateLegacyLogin(input);
+  }
+
+  try {
+    return await exchangeFirebaseCredential(credential);
+  } catch (exchangeError) {
+    if (
+      credential.user.emailVerified ||
+      !(exchangeError instanceof ApiError) ||
+      exchangeError.status !== 401
+    ) {
+      throw exchangeError;
+    }
+
+    try {
+      const migratedCredential = await migrateLegacyLogin(input);
+      return await exchangeFirebaseCredential(migratedCredential);
+    } catch (migrationError) {
+      if (
+        !(migrationError instanceof ApiError) ||
+        migrationError.status !== 401
+      ) {
+        throw migrationError;
+      }
+      try {
+        await sendEmailVerification(credential.user, {
+          url: `${window.location.origin}/login`,
+          handleCodeInApp: false,
+        });
+      } catch {
+        throw new ApiError(
+          "Verify your email before signing in. If you need another link, try again later.",
+          401,
+        );
+      }
+      throw new ApiError(
+        "Verify the link sent to your email before signing in.",
+        401,
+      );
+    }
+  }
+}
+
+export async function logout() {
+  const result = await request<{ message: string }>(
+    "/auth/logout",
+    { method: "POST" },
+    true,
+  );
+  const firebaseAuth = getInitializedFirebaseAuth();
+  if (firebaseAuth) await signOut(firebaseAuth);
+  return result;
 }
 
 export function startGithubLogin() {
@@ -82,10 +177,41 @@ export function startGithubLogin() {
 }
 
 export function requestPasswordReset(email: string) {
-  return request<{ message: string }>("/auth/forgot-password", {
-    method: "POST",
-    body: JSON.stringify({ email }),
-  });
+  const normalizedEmail = email.trim().toLowerCase();
+  let firebaseResetSent = false;
+  let firebaseError: unknown;
+
+  return Promise.resolve()
+    .then(() =>
+      sendPasswordResetEmail(getFirebaseAuth(), normalizedEmail, {
+        url: `${window.location.origin}/reset-password`,
+        handleCodeInApp: false,
+      }),
+    )
+    .then(() => {
+      firebaseResetSent = true;
+    })
+    .catch((error: unknown) => {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? error.code
+          : undefined;
+      if (code !== "auth/user-not-found") firebaseError = error;
+    })
+    .then(() =>
+      request<{ message: string }>("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email: normalizedEmail }),
+      }).catch((backendError: unknown) => {
+        if (firebaseResetSent) {
+          return {
+            message:
+              "If an account exists for that email, reset instructions will arrive shortly.",
+          };
+        }
+        throw firebaseError ?? backendError;
+      }),
+    );
 }
 
 export function resetPassword(token: string, password: string) {
@@ -96,9 +222,17 @@ export function resetPassword(token: string, password: string) {
 }
 
 export function register(input: RegisterInput) {
-  return request<UserProfile>("/auth/register", {
-    method: "POST",
-    body: JSON.stringify(input),
+  return createUserWithEmailAndPassword(
+    getFirebaseAuth(),
+    input.email.trim().toLowerCase(),
+    input.password,
+  ).then(async (credential) => {
+    await updateProfile(credential.user, { displayName: input.name.trim() });
+    await sendEmailVerification(credential.user, {
+      url: `${window.location.origin}/login`,
+      handleCodeInApp: false,
+    });
+    await signOut(getFirebaseAuth());
   });
 }
 

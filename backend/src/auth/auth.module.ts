@@ -9,6 +9,7 @@ import { EmailService } from './email.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './dto/roles.guard';
 import { GithubOAuthService } from './github-oauth.service';
+import { FirebaseAdminService } from './firebase-admin.service';
 
 @Global()
 @Module({
@@ -23,6 +24,7 @@ import { GithubOAuthService } from './github-oauth.service';
   providers: [
     AuthService,
     GithubOAuthService,
+    FirebaseAdminService,
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,

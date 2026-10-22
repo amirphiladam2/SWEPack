@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { AuthService } from './auth.service';
+import { FirebaseAdminService } from './firebase-admin.service';
 
 describe('AuthService', () => {
   const prisma = {
@@ -29,6 +30,10 @@ describe('AuthService', () => {
   };
   const jwtService = { signAsync: jest.fn() };
   const emailService = { sendPasswordResetEmail: jest.fn() };
+  const firebaseAdmin = {
+    createLegacyMigrationToken: jest.fn(),
+    verifyIdToken: jest.fn(),
+  };
   let service: AuthService;
   const originalPasswordResetEnabled = process.env.PASSWORD_RESET_ENABLED;
 
@@ -39,8 +44,14 @@ describe('AuthService', () => {
       prisma as unknown as PrismaService,
       jwtService as unknown as JwtService,
       emailService as unknown as EmailService,
+      firebaseAdmin as unknown as FirebaseAdminService,
     );
     emailService.sendPasswordResetEmail.mockResolvedValue(true);
+    firebaseAdmin.createLegacyMigrationToken.mockResolvedValue({
+      uid: 'firebase-user-1',
+      customToken: 'firebase-custom-token',
+    });
+    prisma.$transaction.mockResolvedValue([]);
     prisma.user.update.mockResolvedValue({});
     prisma.passwordResetToken.delete.mockResolvedValue({});
     prisma.passwordResetToken.deleteMany.mockResolvedValue({ count: 0 });
@@ -54,32 +65,7 @@ describe('AuthService', () => {
     }
   });
 
-  it('creates a password-hashed account', async () => {
-    prisma.user.findUnique.mockResolvedValue(null);
-    prisma.user.create.mockImplementation(({ data }) =>
-      Promise.resolve({
-        ...data,
-        id: 'user-1',
-        role: 'USER',
-        createdAt: new Date('2026-01-01T00:00:00.000Z'),
-      }),
-    );
-
-    const result = await service.register({
-      name: 'Member',
-      email: ' MEMBER@example.com ',
-      password: 'strong-password',
-    });
-
-    const created = prisma.user.create.mock.calls[0][0].data;
-    await expect(
-      bcrypt.compare('strong-password', created.password),
-    ).resolves.toBe(true);
-    expect(created.email).toBe('member@example.com');
-    expect(result).not.toHaveProperty('password');
-  });
-
-  it('returns an access token for valid credentials', async () => {
+  it('migrates valid legacy credentials into Firebase', async () => {
     const password = await bcrypt.hash('strong-password', 4);
     prisma.user.findUnique.mockResolvedValue({
       id: 'user-1',
@@ -89,21 +75,136 @@ describe('AuthService', () => {
       password,
       tokenVersion: 3,
     });
-    jwtService.signAsync.mockResolvedValue('jwt-token');
-
     const result = await service.login({
       email: 'MEMBER@example.com',
       password: 'strong-password',
     });
 
+    expect(firebaseAdmin.createLegacyMigrationToken).toHaveBeenCalledWith({
+      uid: 'user-1',
+      email: 'member@example.com',
+      password: 'strong-password',
+      displayName: 'Member',
+    });
+    expect(result).toEqual({
+      customToken: 'firebase-custom-token',
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        firebaseUid: 'firebase-user-1',
+        password: null,
+        tokenVersion: { increment: 1 },
+      },
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates a SWEPack user for a verified Firebase account', async () => {
+    firebaseAdmin.verifyIdToken.mockResolvedValue({
+      uid: 'firebase-user-1',
+      email: 'member@example.com',
+      email_verified: true,
+      name: 'Member',
+    });
+    prisma.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prisma.user.create.mockResolvedValue({
+      id: 'user-1',
+      name: 'Member',
+      email: 'member@example.com',
+      firebaseUid: 'firebase-user-1',
+      role: 'USER',
+      tokenVersion: 0,
+    });
+    jwtService.signAsync.mockResolvedValue('jwt-token');
+
+    await expect(
+      service.exchangeFirebaseToken('firebase-id-token'),
+    ).resolves.toEqual({
+      accessToken: 'jwt-token',
+      user: {
+        id: 'user-1',
+        name: 'Member',
+        email: 'member@example.com',
+        role: 'USER',
+        githubConnected: false,
+      },
+    });
+    expect(firebaseAdmin.verifyIdToken).toHaveBeenCalledWith(
+      'firebase-id-token',
+    );
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: {
+        name: 'Member',
+        email: 'member@example.com',
+        firebaseUid: 'firebase-user-1',
+      },
+    });
+  });
+
+  it('links a verified Firebase account to an existing SWEPack user', async () => {
+    firebaseAdmin.verifyIdToken.mockResolvedValue({
+      uid: 'firebase-user-1',
+      email: 'member@example.com',
+      email_verified: true,
+    });
+    prisma.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'user-1',
+        name: 'Member',
+        email: 'member@example.com',
+        password: 'legacy-hash',
+        firebaseUid: null,
+        role: 'ADMIN',
+        tokenVersion: 0,
+      });
+    prisma.user.update.mockResolvedValue({
+      id: 'user-1',
+      name: 'Member',
+      email: 'member@example.com',
+      firebaseUid: 'firebase-user-1',
+      role: 'ADMIN',
+      tokenVersion: 1,
+    });
+    jwtService.signAsync.mockResolvedValue('jwt-token');
+
+    await service.exchangeFirebaseToken('firebase-id-token');
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        firebaseUid: 'firebase-user-1',
+        password: null,
+        tokenVersion: { increment: 1 },
+      },
+    });
+    expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+    });
     expect(jwtService.signAsync).toHaveBeenCalledWith({
       sub: 'user-1',
       email: 'member@example.com',
       role: 'ADMIN',
       name: 'Member',
-      tokenVersion: 3,
+      tokenVersion: 1,
     });
-    expect(result.accessToken).toBe('jwt-token');
+  });
+
+  it('does not create a SWEPack user for an unverified Firebase email', async () => {
+    firebaseAdmin.verifyIdToken.mockResolvedValue({
+      uid: 'firebase-user-1',
+      email: 'member@example.com',
+      email_verified: false,
+    });
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.exchangeFirebaseToken('firebase-id-token'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
   it('does not accept a password for a passwordless GitHub account', async () => {
@@ -162,6 +263,7 @@ describe('AuthService', () => {
     prisma.user.findUnique.mockResolvedValue({
       id: 'user-1',
       email: 'member@example.com',
+      password: 'legacy-hash',
     });
     emailService.sendPasswordResetEmail.mockResolvedValue(false);
 
@@ -178,6 +280,20 @@ describe('AuthService', () => {
         expiresAt: expect.any(Date),
       }),
     });
+  });
+
+  it('does not send legacy reset email for Firebase-linked accounts', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'member@example.com',
+      password: null,
+      firebaseUid: 'firebase-user-1',
+    });
+
+    await service.forgotPassword({ email: 'member@example.com' });
+
+    expect(emailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
   });
 
   it('invalidates existing sessions while resetting a password', async () => {
