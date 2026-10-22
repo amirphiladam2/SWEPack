@@ -263,3 +263,7 @@ Firebase password-reset links require Firebase recovery configuration and the fr
 ## Security
 
 If you discover a security issue, do not publish exploit details in a public issue. Contact the project maintainers privately with the affected component and a concise reproduction.
+
+## License
+
+SWEPack is licensed under the MIT License. See [LICENSE](LICENSE) for details.

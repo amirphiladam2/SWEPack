@@ -160,4 +160,6 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+SWEPack is licensed under the MIT License; see [../LICENSE](../LICENSE).
+NestJS and other third-party dependencies remain under their respective
+licenses.
