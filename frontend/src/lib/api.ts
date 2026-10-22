@@ -29,8 +29,6 @@ import {
 } from "@/lib/firebase";
 
 const API_URL = "/api/backend";
-export const PASSWORD_RESET_ENABLED =
-  process.env.NEXT_PUBLIC_PASSWORD_RESET_ENABLED === "true";
 
 export class ApiError extends Error {
   constructor(

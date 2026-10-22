@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ApiError,
-  PASSWORD_RESET_ENABLED,
   resetPassword,
 } from "@/lib/api";
 import {
@@ -94,27 +93,6 @@ function ResetPasswordForm() {
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  if (!PASSWORD_RESET_ENABLED) {
-    return (
-      <main className="mx-auto w-full max-w-[520px] flex-1 px-5 py-12 sm:px-8 sm:py-20">
-        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm sm:p-8">
-          <h1 className="text-2xl font-bold tracking-tight">
-            Password recovery is temporarily unavailable
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-            Please try again later.
-          </p>
-          <Link
-            className="mt-6 block text-center text-xs font-semibold text-[var(--blue)]"
-            href="/login"
-          >
-            Back to sign in
-          </Link>
-        </div>
-      </main>
-    );
   }
 
   return (

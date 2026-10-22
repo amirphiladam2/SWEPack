@@ -8,8 +8,8 @@ export function SiteFooter() {
         SWEPack is a community-built index of resources for modern software teams.
       </span>
       <nav className="flex gap-5">
-        <Link className="transition-colors hover:text-[var(--text)]" href="/about">About</Link>
-        <a className="transition-colors hover:text-[var(--text)]" href="https://github.com/amirphiladam2/SWEPack" target="_blank" rel="noreferrer">
+        <Link className="text-[var(--blue)] transition-colors hover:opacity-75" href="/about">About</Link>
+        <a className="text-[var(--blue)] transition-colors hover:opacity-75" href="https://github.com/amirphiladam2/SWEPack" target="_blank" rel="noreferrer">
           GitHub
         </a>
       </nav>

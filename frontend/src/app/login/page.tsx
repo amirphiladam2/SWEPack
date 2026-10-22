@@ -11,7 +11,6 @@ import { useAuthSession } from "@/components/providers/auth-session-provider";
 import {
   ApiError,
   login,
-  PASSWORD_RESET_ENABLED,
   register,
   startGithubLogin,
 } from "@/lib/api";
@@ -294,7 +293,7 @@ export default function LoginPage() {
                   : "Create account"}
             </button>
           </div>
-          {mode === "login" && PASSWORD_RESET_ENABLED && (
+          {mode === "login" && (
             <Link className="mt-4 block text-center text-xs font-semibold text-[var(--blue)]" href="/forgot-password">
               Forgot your password?
             </Link>
