@@ -83,10 +83,21 @@ async function request<T>(
 }
 
 async function migrateLegacyLogin(input: LoginInput) {
-  const migration = await request<{ customToken: string }>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  let migration: { customToken: string };
+  try {
+    migration = await request<{ customToken: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      throw new ApiError(
+        "That password did not match a legacy account. If you have already started moving to Firebase, use Forgot your password? to set a Firebase password.",
+        401,
+      );
+    }
+    throw error;
+  }
   return signInWithCustomToken(getFirebaseAuth(), migration.customToken);
 }
 

@@ -48,19 +48,12 @@ export class AuthService {
       password,
       displayName: user.name,
     });
-    await this.prisma.$transaction([
-      this.prisma.user.update({
+    if (user.firebaseUid !== migration.uid) {
+      await this.prisma.user.update({
         where: { id: user.id },
-        data: {
-          firebaseUid: migration.uid,
-          password: null,
-          tokenVersion: { increment: 1 },
-        },
-      }),
-      this.prisma.passwordResetToken.deleteMany({
-        where: { userId: user.id },
-      }),
-    ]);
+        data: { firebaseUid: migration.uid },
+      });
+    }
 
     return {
       customToken: migration.customToken,
@@ -105,12 +98,8 @@ export class AuthService {
           where: { id: existingUser.id },
           data: {
             firebaseUid: decoded.uid,
-            password: null,
             tokenVersion: { increment: 1 },
           },
-        });
-        await this.prisma.passwordResetToken.deleteMany({
-          where: { userId: existingUser.id },
         });
       } else {
         user = await this.prisma.user.create({
@@ -129,6 +118,26 @@ export class AuthService {
         where: { id: user.id },
         data: { email },
       });
+    }
+
+    if (user.password) {
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            password: null,
+            tokenVersion: { increment: 1 },
+          },
+        }),
+        this.prisma.passwordResetToken.deleteMany({
+          where: { userId: user.id },
+        }),
+      ]);
+      user = {
+        ...user,
+        password: null,
+        tokenVersion: user.tokenVersion + 1,
+      };
     }
 
     const accessToken = await this.createAccessToken(user);

@@ -104,7 +104,7 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_firebase_project_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_firebase_web_app_id
 ```
 
-The browser talks to the API through a same-origin Next.js proxy. `NEXT_PUBLIC_API_URL` is used server-side by that proxy. Firebase ID tokens are verified by the backend, which continues issuing a revocable HttpOnly session cookie for SWEPack APIs. Keep the Firebase Admin private key only in backend environment secrets. Existing password accounts migrate automatically after their first successful legacy sign-in. Keep the password-reset UI enabled only after Firebase recovery is configured; keep the backend password-reset endpoint and Resend sender enabled during the transition so unmigrated accounts can still recover.
+The browser talks to the API through a same-origin Next.js proxy. `NEXT_PUBLIC_API_URL` is used server-side by that proxy. Firebase ID tokens are verified by the backend, which continues issuing a revocable HttpOnly session cookie for SWEPack APIs. Keep the Firebase Admin private key only in backend environment secrets. Existing password accounts migrate automatically after their first successful Firebase sign-in exchange; the backend keeps the legacy password until that exchange completes. Keep the password-reset UI enabled only after Firebase recovery is configured; keep the backend password-reset endpoint and Resend sender enabled during the transition so unmigrated accounts can still recover.
 
 ### 3. Start both applications
 

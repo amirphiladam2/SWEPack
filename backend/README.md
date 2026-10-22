@@ -104,13 +104,14 @@ environments. The reset template action URL should be
 are verified by the API; the API continues issuing its own revocable,
 HttpOnly-cookie-backed session for SWEPack endpoints.
 
-Existing password accounts are migrated on their first successful sign-in:
-the API provisions or links a Firebase identity using the verified legacy
-password, removes the backend password hash, invalidates outstanding reset
-tokens and sessions, and returns a short-lived Firebase custom token. A verified
-Firebase email can also link to an existing SWEPack account with the same
-email, preserving its resources, collections, and role. New accounts must
-verify their email before first sign-in. The frontend sends Firebase recovery
+Existing password accounts migrate on their first successful sign-in: the API
+provisions or links a Firebase identity using the verified legacy password,
+then only removes the backend password hash and invalidates outstanding reset
+tokens and sessions after Firebase successfully exchanges the ID token. This
+keeps the legacy password usable if a sign-in is interrupted mid-migration. A
+verified Firebase email can also link to an existing SWEPack account with the
+same email, preserving its resources, collections, and role. New accounts
+must verify their email before first sign-in. The frontend sends Firebase recovery
 emails for migrated/new accounts and continues using the backend email recovery
 for legacy accounts that have not migrated. Keep `PASSWORD_RESET_ENABLED=true`
 and the Resend sender configured during the transition; these legacy settings

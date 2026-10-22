@@ -72,6 +72,11 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
         !exchange.user ||
         typeof exchange.user !== "object"
       ) {
+        console.error("Firebase session exchange returned an invalid response", {
+          keys: Object.keys(exchange),
+          accessTokenType: typeof exchange.accessToken,
+          userType: typeof exchange.user,
+        });
         return NextResponse.json(
           { message: "The sign-in response from the API was invalid." },
           { status: 502, headers: { "Cache-Control": "no-store" } },

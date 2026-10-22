@@ -91,13 +91,9 @@ describe('AuthService', () => {
     });
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
-      data: {
-        firebaseUid: 'firebase-user-1',
-        password: null,
-        tokenVersion: { increment: 1 },
-      },
+      data: { firebaseUid: 'firebase-user-1' },
     });
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('creates a SWEPack user for a verified Firebase account', async () => {
@@ -150,21 +146,20 @@ describe('AuthService', () => {
       email: 'member@example.com',
       email_verified: true,
     });
-    prisma.user.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: 'user-1',
-        name: 'Member',
-        email: 'member@example.com',
-        password: 'legacy-hash',
-        firebaseUid: null,
-        role: 'ADMIN',
-        tokenVersion: 0,
-      });
+    prisma.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'user-1',
+      name: 'Member',
+      email: 'member@example.com',
+      password: 'legacy-hash',
+      firebaseUid: null,
+      role: 'ADMIN',
+      tokenVersion: 0,
+    });
     prisma.user.update.mockResolvedValue({
       id: 'user-1',
       name: 'Member',
       email: 'member@example.com',
+      password: 'legacy-hash',
       firebaseUid: 'firebase-user-1',
       role: 'ADMIN',
       tokenVersion: 1,
@@ -173,13 +168,13 @@ describe('AuthService', () => {
 
     await service.exchangeFirebaseToken('firebase-id-token');
 
-    expect(prisma.user.update).toHaveBeenCalledWith({
+    expect(prisma.user.update).toHaveBeenNthCalledWith(1, {
       where: { id: 'user-1' },
-      data: {
-        firebaseUid: 'firebase-user-1',
-        password: null,
-        tokenVersion: { increment: 1 },
-      },
+      data: { firebaseUid: 'firebase-user-1', tokenVersion: { increment: 1 } },
+    });
+    expect(prisma.user.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'user-1' },
+      data: { password: null, tokenVersion: { increment: 1 } },
     });
     expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalledWith({
       where: { userId: 'user-1' },
@@ -189,8 +184,9 @@ describe('AuthService', () => {
       email: 'member@example.com',
       role: 'ADMIN',
       name: 'Member',
-      tokenVersion: 1,
+      tokenVersion: 2,
     });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('does not create a SWEPack user for an unverified Firebase email', async () => {
