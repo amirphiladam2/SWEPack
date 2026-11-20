@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { AppModule } from './app.module';
 import { NoCacheInterceptor } from './common/no-cache.interceptor';
 import type { Application } from 'express';
+import service from '../service.mjs';
 
 function readPort(value: string | undefined) {
   const port = Number(value ?? 3001);
@@ -65,8 +65,51 @@ function validateEnvironment() {
   }
 }
 
+function plantEnvironment() {
+  // Everything below arrives from the Composer service (its database
+  // dependency and its input), never from a file in the repository.
+  const { db } = service.load();
+  const input = service.input();
+
+  process.env.DATABASE_URL = db.url;
+  process.env.JWT_SECRET = input.jwtSecret;
+  process.env.FRONTEND_URL = input.frontendUrl;
+  if (input.passwordResetEnabled !== undefined) {
+    process.env.PASSWORD_RESET_ENABLED = input.passwordResetEnabled;
+  }
+  if (input.firebaseProjectId !== undefined) {
+    process.env.FIREBASE_PROJECT_ID = input.firebaseProjectId;
+  }
+  if (input.firebaseClientEmail !== undefined) {
+    process.env.FIREBASE_CLIENT_EMAIL = input.firebaseClientEmail;
+  }
+  if (input.firebasePrivateKey !== undefined) {
+    process.env.FIREBASE_PRIVATE_KEY = input.firebasePrivateKey;
+  }
+  if (input.githubClientId !== undefined) {
+    process.env.GITHUB_CLIENT_ID = input.githubClientId;
+  }
+  if (input.githubClientSecret !== undefined) {
+    process.env.GITHUB_CLIENT_SECRET = input.githubClientSecret;
+  }
+  if (input.githubCallbackUrl !== undefined) {
+    process.env.GITHUB_CALLBACK_URL = input.githubCallbackUrl;
+  }
+  if (input.resendApiKey !== undefined) {
+    process.env.RESEND_API = input.resendApiKey;
+  }
+  if (input.emailFrom !== undefined) {
+    process.env.EMAIL_FROM = input.emailFrom;
+  }
+}
+
+plantEnvironment();
+
 async function bootstrap() {
   validateEnvironment();
+  // Imported after the service environment is planted: the NestJS modules
+  // read the values above while they register.
+  const { AppModule } = await import('./app.module.js');
   const app = await NestFactory.create(AppModule);
 
   if (process.env.NODE_ENV === 'production') {
@@ -87,7 +130,7 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(readPort(process.env.PORT));
+  await app.listen(readPort(String(service.port())));
 }
 
 void bootstrap();
