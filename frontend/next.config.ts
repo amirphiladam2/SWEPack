@@ -1,40 +1,8 @@
 import type { NextConfig } from "next";
 
-if (process.env.NODE_ENV === "production") {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (!apiUrl) {
-    throw new Error("NEXT_PUBLIC_API_URL is required for production builds.");
-  }
-  if (new URL(apiUrl).protocol !== "https:") {
-    throw new Error("NEXT_PUBLIC_API_URL must use HTTPS in production.");
-  }
-  const frontendUrl = process.env.FRONTEND_URL;
-  if (!frontendUrl || new URL(frontendUrl).protocol !== "https:") {
-    throw new Error("FRONTEND_URL must be set to the HTTPS frontend origin.");
-  }
-  const frontendOrigin = new URL(frontendUrl);
-  if (
-    frontendOrigin.pathname !== "/" ||
-    frontendOrigin.search ||
-    frontendOrigin.hash ||
-    frontendOrigin.origin !== frontendUrl.replace(/\/$/, "")
-  ) {
-    throw new Error("FRONTEND_URL must contain only the frontend origin.");
-  }
-  for (const name of [
-    "NEXT_PUBLIC_FIREBASE_API_KEY",
-    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
-    "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
-    "NEXT_PUBLIC_FIREBASE_APP_ID",
-  ]) {
-    if (!process.env[name]) {
-      throw new Error(`${name} is required for production Firebase auth.`);
-    }
-  }
-}
-
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  output: "standalone",
   async headers() {
     const localApiSources =
       process.env.NODE_ENV === "development"

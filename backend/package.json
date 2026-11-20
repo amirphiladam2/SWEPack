@@ -6,7 +6,8 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && cp service.mjs dist/service.mjs",
+    "type_check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -19,8 +20,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
     "seed:production": "tsx prisma/seed.ts",
-    "bootstrap:admin": "tsx prisma/seed-admin.ts",
-    "postinstall": "prisma skills sync || exit 0"
+    "bootstrap:admin": "tsx prisma/seed-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

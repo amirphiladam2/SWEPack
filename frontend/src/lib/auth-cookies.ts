@@ -4,6 +4,8 @@ export const GITHUB_LINK_COOKIE_NAME = "swepack_github_link";
 export const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 export const OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
 
+import service from "../../service.mjs";
+
 export function secureCookieOptions(maxAge: number, path = "/") {
   return {
     httpOnly: true,
@@ -22,26 +24,12 @@ export function clearCookieOptions(path = "/") {
 }
 
 export function backendApiUrl() {
-  const configuredUrl =
-    process.env.NEXT_PUBLIC_API_URL ??
-    (process.env.NODE_ENV === "development"
-      ? "http://localhost:3001"
-      : undefined);
-  if (!configuredUrl) {
-    throw new Error("NEXT_PUBLIC_API_URL is required to reach the backend API.");
-  }
+  const configuredUrl = service.input().apiUrl;
   const url = new URL(configuredUrl);
-  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
-    throw new Error("NEXT_PUBLIC_API_URL must use HTTPS in production.");
-  }
   return url.toString().replace(/\/+$/, "");
 }
 
 export function hasExpectedOrigin(request: Request) {
-  const expectedOrigin =
-    process.env.FRONTEND_URL ??
-    (process.env.NODE_ENV === "development"
-      ? "http://localhost:3000"
-      : undefined);
+  const expectedOrigin = service.input().frontendUrl;
   return Boolean(expectedOrigin && request.headers.get("origin") === expectedOrigin);
 }
