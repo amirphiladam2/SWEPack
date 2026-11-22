@@ -65,9 +65,10 @@ function validateEnvironment() {
   }
 }
 
-async function bootstrap() {
+export async function bootstrap(portOverride?: number) {
   validateEnvironment();
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
 
   if (process.env.NODE_ENV === 'production') {
     const expressApp = app.getHttpAdapter().getInstance() as Application;
@@ -87,7 +88,17 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(readPort(process.env.PORT));
+  const port = portOverride ?? readPort(process.env.PORT);
+  await app.listen(port, '0.0.0.0');
+  return app;
 }
 
-void bootstrap();
+const isDirectExecution =
+  process.argv[1] &&
+  (process.argv[1].endsWith('main.js') ||
+    process.argv[1].endsWith('main.ts') ||
+    process.argv[1].includes('nest'));
+
+if (isDirectExecution && process.env.NODE_ENV !== 'test') {
+  void bootstrap();
+}
