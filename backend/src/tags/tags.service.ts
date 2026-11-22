@@ -1,6 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { isUniqueConstraintError, PrismaService } from '../prisma/prisma.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 
@@ -9,39 +8,31 @@ export class TagsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    return this.prisma.tag.findMany({
-      orderBy: {
-        name: 'asc',
-      },
-    });
+    return this.prisma.orm.Tag.orderBy((t) => t.name.asc()).all();
   }
 
   async create(createTagDto: CreateTagDto) {
-    return this.prisma.tag.create({
-      data: {
-        name: createTagDto.name,
-        slug: createTagDto.name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, ''),
-      },
+    return this.prisma.orm.Tag.create({
+      name: createTagDto.name,
+      slug: createTagDto.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, ''),
     });
   }
 
   async update(id: string, dto: UpdateTagDto) {
+    const existing = await this.prisma.orm.Tag.first({ id });
+    if (!existing) throw new NotFoundException('Tag not found.');
+    if (dto.name === undefined) return existing;
+
     try {
-      return await this.prisma.tag.update({
-        where: { id },
-        data: dto.name === undefined ? {} : {
-          name: dto.name,
-          slug: dto.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-        },
+      return await this.prisma.orm.Tag.where({ id }).update({
+        name: dto.name,
+        slug: dto.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        throw new NotFoundException('Tag not found.');
-      }
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (isUniqueConstraintError(error)) {
         throw new ConflictException('A tag with this name already exists.');
       }
       throw error;
@@ -49,13 +40,8 @@ export class TagsService {
   }
 
   async remove(id: string) {
-    try {
-      return await this.prisma.tag.delete({ where: { id } });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        throw new NotFoundException('Tag not found.');
-      }
-      throw error;
-    }
+    const removed = await this.prisma.orm.Tag.where({ id }).delete();
+    if (!removed) throw new NotFoundException('Tag not found.');
+    return removed;
   }
 }

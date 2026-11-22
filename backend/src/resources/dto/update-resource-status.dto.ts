@@ -1,6 +1,6 @@
 
 import { IsEnum } from 'class-validator';
-import { ResourceStatus } from 'generated/prisma/enums';
+import { ResourceStatus } from '../../prisma/enums';
 
 export class UpdateResourceStatusDto {
   @IsEnum(ResourceStatus)

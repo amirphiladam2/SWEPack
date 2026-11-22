@@ -20,20 +20,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     name?: string;
     tokenVersion?: number;
   }): Promise<AuthenticatedUser> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        tokenVersion: true,
-        githubAccounts: {
-          select: { id: true },
-          take: 1,
-        },
-      },
-    });
+    const user = await this.prisma.orm.User
+      .where({ id: payload.sub })
+      .include('githubAccounts', (accounts) => accounts.select('id').limit(1))
+      .first();
     if (!user || user.tokenVersion !== (payload.tokenVersion ?? 0)) {
       throw new UnauthorizedException('Your session is no longer valid.');
     }

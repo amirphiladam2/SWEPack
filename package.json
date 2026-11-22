@@ -1,0 +1,25 @@
+{
+  "name": "swepack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SWEPack monorepo: Next.js web app and NestJS API backed by PostgreSQL and Prisma.",
+  "scripts": {
+    "build": "cd backend && npm ci --no-audit --no-fund && npm run build"
+  },
+  "dependencies": {
+    "@prisma/composer": "0.38.0",
+    "@prisma/composer-prisma-cloud": "0.38.0",
+    "@prisma/orm-postgres": "8.0.0-rc.23",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "prisma": "8.0.0-rc.33"
+  },
+  "overrides": {
+    "effect": "4.0.5",
+    "@effect/vitest": "4.0.5",
+    "@effect/platform-bun": "4.0.5",
+    "@effect/platform-node": "4.0.5",
+    "@effect/platform-node-shared": "4.0.5"
+  }
+}

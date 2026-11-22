@@ -1,6 +1,8 @@
 import 'dotenv/config';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client';
+import postgres from '@prisma/orm-postgres/runtime';
+import { contractFromJson } from '@prisma/orm-postgres/static';
+import type { Contract } from '../src/prisma/contract.js';
+import contractJson from '../src/prisma/contract.json' with { type: 'json' };
 
 const target = process.env.SEED_TARGET;
 const databaseUrl = process.env.DATABASE_URL;
@@ -36,36 +38,40 @@ function validateProductionTarget() {
 async function seed() {
   validateProductionTarget();
 
-  const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: databaseUrl }),
+  const db = postgres({
+    contract: contractFromJson<Contract>(contractJson),
+    url: databaseUrl!,
   });
+  const orm = db.orm.public;
 
   try {
-    await prisma.category.upsert({
-      where: { slug: 'frontend' },
-      update: {
+    const frontend = await orm.Category.where({ slug: 'frontend' }).first();
+    const frontendDescription =
+      'Frontend development tools, libraries, frameworks, and resources.';
+    if (frontend) {
+      await orm.Category.where({ id: frontend.id }).update({
         name: 'Frontend',
-        description:
-          'Frontend development tools, libraries, frameworks, and resources.',
-      },
-      create: {
+        description: frontendDescription,
+      });
+    } else {
+      await orm.Category.create({
         name: 'Frontend',
         slug: 'frontend',
-        description:
-          'Frontend development tools, libraries, frameworks, and resources.',
-      },
-    });
+        description: frontendDescription,
+      });
+    }
 
     for (const name of ['Animation', 'React', 'TypeScript', 'UI']) {
       const slug = name.toLowerCase();
-      await prisma.tag.upsert({
-        where: { slug },
-        update: { name },
-        create: { name, slug },
-      });
+      const tag = await orm.Tag.where({ slug }).first();
+      if (tag) {
+        await orm.Tag.where({ id: tag.id }).update({ name });
+      } else {
+        await orm.Tag.create({ name, slug });
+      }
     }
   } finally {
-    await prisma.$disconnect();
+    await db.close();
   }
 }
 

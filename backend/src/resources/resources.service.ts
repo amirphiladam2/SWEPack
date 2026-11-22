@@ -5,22 +5,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { or } from '@prisma/orm-postgres/orm-client';
+import { PrismaService, uniqueConstraintName } from '../prisma/prisma.service';
 import { CreateResourceDto } from './dto/create-resource.dto';
 import { UpdateResourceDto } from './dto/update-resource.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
-import { ResourceStatus } from 'generated/prisma/enums';
+import { ResourceStatus } from '../prisma/enums';
 import { AdminResourceQueryDto } from './dto/admin-resource-query.dto';
-
-const submissionResourceInclude = {
-  category: true,
-  tags: {
-    include: {
-      tag: true,
-    },
-  },
-} satisfies Prisma.ResourceInclude;
 
 @Injectable()
 export class ResourcesService {
@@ -29,22 +20,9 @@ export class ResourcesService {
   constructor(private readonly prisma: PrismaService) { }
 
   private getUniqueConstraintFields(
-    error: Prisma.PrismaClientKnownRequestError,
+    error: unknown,
   ): string[] {
-    const target = error.meta?.target;
-
-    if (typeof target === 'string') {
-      return [target];
-    }
-
-    if (
-      Array.isArray(target) &&
-      target.every((field): field is string => typeof field === 'string')
-    ) {
-      return target;
-    }
-
-    return [];
+    return uniqueConstraintName(error).map((constraint) => constraint.toLowerCase());
   }
 
   private getCreateConflictMessage(fields: string[]): string {
@@ -81,15 +59,19 @@ export class ResourcesService {
     let counter = 2;
 
     while (
-      await this.prisma.resource.findUnique({
-        where: { slug },
-      })
+      await this.prisma.orm.Resource.where({ slug }).first()
     ) {
       slug = `${baseSlug}-${counter}`;
       counter++;
     }
 
     return slug;
+  }
+
+  private likePattern(search: string): string {
+    // `contains` with an insensitive mode matched substrings literally; the
+    // LIKE pattern it becomes must escape the pattern metacharacters.
+    return `%${search.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
   }
 
   async findAll(query: ResourceQueryDto) {
@@ -103,70 +85,42 @@ export class ResourcesService {
       sort = 'newest',
     } = query;
 
-    const where = {
-      status: 'PUBLISHED' as const,
+    const { rows, total } = await this.prisma.transaction(async (tx) => {
+      let filtered = tx.orm.public.Resource.where({ status: 'PUBLISHED' });
+      if (search) {
+        const pattern = this.likePattern(search);
+        filtered = filtered.where((r) =>
+          or(r.title.ilike(pattern), r.description.ilike(pattern)),
+        );
+      }
+      if (type) filtered = filtered.where({ type });
+      if (categoryId) filtered = filtered.where({ categoryId });
+      if (tagId) filtered = filtered.where((r) => r.tags.some((rt) => rt.tagId.eq(tagId)));
 
-      ...(search && {
-        OR: [
-          {
-            title: {
-              contains: search,
-              mode: 'insensitive' as const,
-            },
-          },
-          {
-            description: {
-              contains: search,
-              mode: 'insensitive' as const,
-            },
-          },
-        ],
-      }),
+      const ordered =
+        sort === 'oldest'
+          ? filtered.orderBy((r) => r.createdAt.asc()).orderBy((r) => r.id.asc())
+          : sort === 'title'
+            ? filtered.orderBy((r) => r.title.asc()).orderBy((r) => r.id.asc())
+            : filtered.orderBy((r) => r.createdAt.desc()).orderBy((r) => r.id.asc());
 
-      ...(type && { type }),
-      ...(categoryId && { categoryId }),
+      const rows = await ordered
+        .select('id', 'title', 'url', 'description', 'type', 'logoUrl', 'previewImageUrl')
+        .include('category', (category) => category.select('id', 'name'))
+        .include('tags', (tags) => tags.include('tag', (tag) => tag.select('name')))
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all();
 
-      ...(tagId && {
-        tags: {
-          some: { tagId },
-        },
-      }),
-    };
-
-    const orderBy: Prisma.ResourceOrderByWithRelationInput[] =
-      sort === 'oldest'
-        ? [{ createdAt: 'asc' }, { id: 'asc' }]
-        : sort === 'title'
-          ? [{ title: 'asc' }, { id: 'asc' }]
-          : [{ createdAt: 'desc' }, { id: 'asc' }];
-
-    const [resources, total] = await this.prisma.$transaction([
-      this.prisma.resource.findMany({
-        where,
-        select: {
-          id: true,
-          title: true,
-          url: true,
-          description: true,
-          type: true,
-          logoUrl: true,
-          previewImageUrl: true,
-          category: {
-            select: { id: true, name: true },
-          },
-          tags: {
-            select: { tag: { select: { name: true } } },
-          },
-        },
-        orderBy,
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.resource.count({ where }),
-    ]);
+      const { total } = await filtered.aggregate((a) => ({ total: a.count() }));
+      return { rows, total };
+    });
 
     return {
-      data: resources,
+      data: rows.map((resource) => ({
+        ...resource,
+        tags: resource.tags.map(({ tag }) => ({ tag })),
+      })),
       meta: {
         total,
         page,
@@ -178,35 +132,30 @@ export class ResourcesService {
 
   async findAllForAdmin(query: AdminResourceQueryDto) {
     const { search, status, page = 1, limit = 20 } = query;
-    const where = {
-      ...(status && { status }),
-      ...(search && {
-        OR: [
-          { title: { contains: search, mode: 'insensitive' as const } },
-          { url: { contains: search, mode: 'insensitive' as const } },
-        ],
-      }),
-    };
 
-    const [resources, total] = await this.prisma.$transaction([
-      this.prisma.resource.findMany({
-        where,
-        include: {
-          category: true,
-          tags: { include: { tag: true } },
-          submittedBy: {
-            select: { id: true, name: true, email: true, role: true },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.resource.count({ where }),
-    ]);
+    const { rows, total } = await this.prisma.transaction(async (tx) => {
+      let filtered = tx.orm.public.Resource as typeof tx.orm.public.Resource;
+      if (status) filtered = filtered.where({ status });
+      if (search) {
+        const pattern = this.likePattern(search);
+        filtered = filtered.where((r) => or(r.title.ilike(pattern), r.url.ilike(pattern)));
+      }
+
+      const rows = await filtered
+        .include('category')
+        .include('tags', (tags) => tags.include('tag'))
+        .include('submittedBy', (user) => user.select('id', 'name', 'email', 'role'))
+        .orderBy((r) => r.createdAt.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all();
+
+      const { total } = await filtered.aggregate((a) => ({ total: a.count() }));
+      return { rows, total };
+    });
 
     return {
-      data: resources,
+      data: rows,
       meta: {
         total,
         page,
@@ -218,14 +167,20 @@ export class ResourcesService {
 
   async getAdminSummary() {
     const [total, pending, published, rejected, archived] = await Promise.all([
-      this.prisma.resource.count(),
-      this.prisma.resource.count({ where: { status: 'PENDING' } }),
-      this.prisma.resource.count({ where: { status: 'PUBLISHED' } }),
-      this.prisma.resource.count({ where: { status: 'REJECTED' } }),
-      this.prisma.resource.count({ where: { status: 'ARCHIVED' } }),
+      this.prisma.orm.Resource.aggregate((a) => ({ total: a.count() })),
+      this.prisma.orm.Resource.where({ status: 'PENDING' }).aggregate((a) => ({ total: a.count() })),
+      this.prisma.orm.Resource.where({ status: 'PUBLISHED' }).aggregate((a) => ({ total: a.count() })),
+      this.prisma.orm.Resource.where({ status: 'REJECTED' }).aggregate((a) => ({ total: a.count() })),
+      this.prisma.orm.Resource.where({ status: 'ARCHIVED' }).aggregate((a) => ({ total: a.count() })),
     ]);
 
-    return { total, pending, published, rejected, archived };
+    return {
+      total: total.total,
+      pending: pending.total,
+      published: published.total,
+      rejected: rejected.total,
+      archived: archived.total,
+    };
   }
 
 
@@ -233,10 +188,11 @@ export class ResourcesService {
     const { categoryId, tagIds, ...resourceData } = createResourceDto;
 
     try {
-      const existingResource = await this.prisma.resource.findUnique({
-        where: { url: createResourceDto.url },
-        include: submissionResourceInclude,
-      });
+      const existingResource = await this.prisma.orm.Resource
+        .where({ url: createResourceDto.url })
+        .include('category')
+        .include('tags', (tags) => tags.include('tag'))
+        .first();
       if (existingResource) {
         if (existingResource.submittedById === userId) {
           return existingResource;
@@ -247,51 +203,42 @@ export class ResourcesService {
       }
 
       const slug = await this.generateUniqueSlug(createResourceDto.title);
-      const resource = await this.prisma.resource.create({
-        data: {
+
+      const resource = await this.prisma.transaction(async (tx) => {
+        const created = await tx.orm.public.Resource.create({
           ...resourceData,
-
           slug,
-
-          submittedBy: {
-            connect: {
-              id: userId,
-            },
-          },
-          category: categoryId
-            ? {
-              connect: {
-                id: categoryId,
-              },
-            }
-            : undefined,
-
-          tags: tagIds
-            ? {
-              create: tagIds.map((tagId) => ({
-                tag: {
-                  connect: {
-                    id: tagId,
-                  },
-                },
-              })),
-            }
-            : undefined,
-        },
-
-        include: submissionResourceInclude,
-      });
-      this.logger.log('Resource submission created with PENDING status.');
-      return resource;
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        const existingResource = await this.prisma.resource.findUnique({
-          where: { url: createResourceDto.url },
-          include: submissionResourceInclude,
+          submittedById: userId,
+          categoryId: categoryId ?? null,
         });
+
+        if (tagIds?.length) {
+          for (const tagId of tagIds) {
+            await tx.orm.public.ResourceTag.create({
+              resourceId: created.id,
+              tagId,
+            });
+          }
+        }
+
+        return created;
+      });
+
+      const full = await this.prisma.orm.Resource
+        .where({ id: resource.id })
+        .include('category')
+        .include('tags', (tags) => tags.include('tag'))
+        .first();
+
+      this.logger.log('Resource submission created with PENDING status.');
+      return full;
+    } catch (error) {
+      if (uniqueConstraintName(error).length > 0) {
+        const existingResource = await this.prisma.orm.Resource
+          .where({ url: createResourceDto.url })
+          .include('category')
+          .include('tags', (tags) => tags.include('tag'))
+          .first();
         if (existingResource) {
           if (existingResource.submittedById === userId) {
             return existingResource;
@@ -318,53 +265,22 @@ export class ResourcesService {
   }
 
   async findMine(userId: string) {
-    return this.prisma.resource.findMany({
-      where: {
-        submittedById: userId,
-      },
-      include: {
-        category: true,
-        tags: {
-          include: {
-            tag: true,
-          },
-        },
-        submittedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    return this.prisma.orm.Resource
+      .where({ submittedById: userId })
+      .include('category')
+      .include('tags', (tags) => tags.include('tag'))
+      .include('submittedBy', (user) => user.select('id', 'name', 'email', 'role'))
+      .orderBy((r) => r.createdAt.desc())
+      .all();
   }
+
   async findOne(id: string) {
-    return this.prisma.resource.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        category: true,
-        tags: {
-          include: {
-            tag: true,
-          },
-        },
-        submittedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-      },
-    });
+    return this.prisma.orm.Resource
+      .where({ id })
+      .include('category')
+      .include('tags', (tags) => tags.include('tag'))
+      .include('submittedBy', (user) => user.select('id', 'name', 'email', 'role'))
+      .first();
   }
 
   async update(
@@ -373,9 +289,7 @@ export class ResourcesService {
     userId: string,
     role: string,
   ) {
-    const resource = await this.prisma.resource.findUnique({
-      where: { id },
-    });
+    const resource = await this.prisma.orm.Resource.first({ id });
 
     if (!resource) {
       throw new NotFoundException('Resource not found.');
@@ -390,47 +304,46 @@ export class ResourcesService {
     const { categoryId, tagIds, ...resourceData } =
       updateResourceDto;
 
-    const data: Prisma.ResourceUpdateInput = {
+    const data: {
+      title?: string;
+      url?: string;
+      description?: string | null;
+      type?: string;
+      logoUrl?: string | null;
+      faviconUrl?: string | null;
+      previewImageUrl?: string | null;
+      domain?: string | null;
+      notes?: string | null;
+      categoryId?: string | null;
+    } = {
       ...resourceData,
     };
 
     if (categoryId !== undefined) {
-      data.category = categoryId
-        ? { connect: { id: categoryId } }
-        : { disconnect: true };
+      data.categoryId = categoryId;
     }
 
-    if (tagIds !== undefined) {
-      data.tags = {
-        deleteMany: {},
-        ...(tagIds.length > 0
-          ? {
-            create: tagIds.map((tagId) => ({
-              tag: {
-                connect: { id: tagId },
-              },
-            })),
-          }
-          : {}),
-      };
-    }
+    return this.prisma.transaction(async (tx) => {
+      const updated = await tx.orm.public.Resource.where({ id }).update(data);
+      if (!updated) throw new NotFoundException('Resource not found.');
 
-    return this.prisma.resource.update({
-      where: { id },
-      data,
-      include: {
-        category: true,
-        tags: {
-          include: { tag: true },
-        },
-      },
+      if (tagIds !== undefined) {
+        await tx.orm.public.ResourceTag.where({ resourceId: id }).deleteAll();
+        for (const tagId of tagIds) {
+          await tx.orm.public.ResourceTag.create({ resourceId: id, tagId });
+        }
+      }
+
+      return tx.orm.public.Resource
+        .where({ id })
+        .include('category')
+        .include('tags', (tags) => tags.include('tag'))
+        .first();
     });
   }
 
   async remove(id: string, userId: string, role: string) {
-    const resource = await this.prisma.resource.findUnique({
-      where: { id },
-    });
+    const resource = await this.prisma.orm.Resource.first({ id });
 
     if (!resource) {
       throw new NotFoundException('Resource not found.');
@@ -442,24 +355,19 @@ export class ResourcesService {
       );
     }
 
-    return this.prisma.resource.delete({
-      where: { id },
-    });
+    const removed = await this.prisma.orm.Resource.where({ id }).delete();
+    if (!removed) throw new NotFoundException('Resource not found.');
+    return removed;
   }
 
   async saveResource(resourceId: string, userId: string) {
     try {
-      return await this.prisma.savedResource.create({
-        data: {
-          userId,
-          resourceId,
-        },
+      return await this.prisma.orm.SavedResource.create({
+        userId,
+        resourceId,
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if (uniqueConstraintName(error).length > 0) {
         throw new ConflictException(
           'Resource is already saved.',
         );
@@ -470,45 +378,23 @@ export class ResourcesService {
   }
 
   async findSaved(userId: string) {
-    return this.prisma.savedResource.findMany({
-      where: {
-        userId,
-      },
-      include: {
-        resource: {
-          include: {
-            category: true,
-            tags: {
-              include: {
-                tag: true,
-              },
-            },
-            submittedBy: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    return this.prisma.orm.SavedResource
+      .where({ userId })
+      .include('resource', (resource) =>
+        resource
+          .include('category')
+          .include('tags', (tags) => tags.include('tag'))
+          .include('submittedBy', (user) => user.select('id', 'name', 'email', 'role')),
+      )
+      .orderBy((sr) => sr.createdAt.desc())
+      .all();
   }
 
   async unsaveResource(resourceId: string, userId: string) {
-    const savedResource = await this.prisma.savedResource.findUnique({
-      where: {
-        userId_resourceId: {
-          userId,
-          resourceId,
-        },
-      },
-    });
+    const savedResource = await this.prisma.orm.SavedResource.where({
+      userId,
+      resourceId,
+    }).first();
 
     if (!savedResource) {
       throw new NotFoundException(
@@ -516,28 +402,23 @@ export class ResourcesService {
       );
     }
 
-    return this.prisma.savedResource.delete({
-      where: {
-        userId_resourceId: {
-          userId,
-          resourceId,
-        },
-      },
-    });
+    const removed = await this.prisma.orm.SavedResource.where({
+      userId,
+      resourceId,
+    }).delete();
+    if (!removed) throw new NotFoundException('Saved resource not found.');
+    return removed;
   }
 
   async updateStatus(id: string, status: ResourceStatus) {
-    const resource = await this.prisma.resource.findUnique({
-      where: { id },
-    });
+    const resource = await this.prisma.orm.Resource.first({ id });
 
     if (!resource) {
       throw new NotFoundException('Resource not found.');
     }
 
-    return this.prisma.resource.update({
-      where: { id },
-      data: { status },
-    });
+    const updated = await this.prisma.orm.Resource.where({ id }).update({ status });
+    if (!updated) throw new NotFoundException('Resource not found.');
+    return updated;
   }
 }

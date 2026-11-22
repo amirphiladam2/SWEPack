@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import * as bcrypt from 'bcrypt';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client';
+import postgres from '@prisma/orm-postgres/runtime';
+import { contractFromJson } from '@prisma/orm-postgres/static';
+import type { Contract } from '../src/prisma/contract.js';
+import contractJson from '../src/prisma/contract.json' with { type: 'json' };
 
 const target = process.env.SEED_TARGET;
 const databaseUrl = process.env.DATABASE_URL;
@@ -40,29 +42,35 @@ function validateInput() {
 
 async function bootstrapAdmin() {
   validateInput();
-  const connectionString = databaseUrl!;
   const adminEmail = email!;
   const adminName = name!;
   const adminPassword = password!;
-  const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+  const db = postgres({
+    contract: contractFromJson<Contract>(contractJson),
+    url: databaseUrl!,
   });
+  const orm = db.orm.public;
 
   try {
     const passwordHash = await bcrypt.hash(adminPassword, 12);
-    await prisma.user.upsert({
-      where: { email: adminEmail },
-      update: { name: adminName, password: passwordHash, role: 'ADMIN' },
-      create: {
+    const existing = await orm.User.where({ email: adminEmail }).first();
+    if (existing) {
+      await orm.User.where({ id: existing.id }).update({
+        name: adminName,
+        password: passwordHash,
+        role: 'ADMIN',
+      });
+    } else {
+      await orm.User.create({
         name: adminName,
         email: adminEmail,
         password: passwordHash,
         role: 'ADMIN',
-      },
-    });
+      });
+    }
     console.log('Admin bootstrap completed.');
   } finally {
-    await prisma.$disconnect();
+    await db.close();
   }
 }
 

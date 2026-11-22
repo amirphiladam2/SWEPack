@@ -13,17 +13,15 @@ export class CollectionsService {
   constructor(private readonly prisma: PrismaService) { }
 
   async findAll(userId: string) {
-    return this.prisma.collection.findMany({
-      where: { userId },
-      include: {
-        _count: {
-          select: { resources: true },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const collections = await this.prisma.orm.Collection
+      .where({ userId })
+      .include('resources', (resources) => resources.count())
+      .orderBy((c) => c.createdAt.desc())
+      .all();
+    return collections.map(({ resources, ...collection }) => ({
+      ...collection,
+      _count: { resources },
+    }));
   }
 
   async create(createCollectionDto: CreateCollectionDto, userId: string) {
@@ -39,29 +37,24 @@ export class CollectionsService {
     let suffix = 2;
 
     while (
-      await this.prisma.collection.findUnique({
-        where: {
-          userId_slug: { userId, slug },
-        },
-      })
+      await this.prisma.orm.Collection.where({ userId, slug }).first()
     ) {
       slug = `${baseSlug}-${suffix++}`;
     }
 
-    return this.prisma.collection.create({
-      data: {
+    return this.prisma.transaction(async (tx) => {
+      const created = await tx.orm.public.Collection.create({
         name,
         description,
         slug,
-        user: {
-          connect: { id: userId },
-        },
-      },
-      include: {
-        _count: {
-          select: { resources: true },
-        },
-      },
+        userId,
+      });
+
+      const { total } = await tx.orm.public.CollectionResource
+        .where({ collectionId: created.id })
+        .aggregate((a) => ({ total: a.count() }));
+
+      return { ...created, _count: { resources: total } };
     });
   }
 
@@ -70,9 +63,7 @@ export class CollectionsService {
     userId: string,
     updateCollectionDto: UpdateCollectionDto,
   ) {
-    const collection = await this.prisma.collection.findFirst({
-      where: { id, userId },
-    });
+    const collection = await this.prisma.orm.Collection.where({ id, userId }).first();
 
     if (!collection) {
       throw new NotFoundException('Collection not found.');
@@ -98,13 +89,7 @@ export class CollectionsService {
       let suffix = 2;
 
       while (
-        await this.prisma.collection.findFirst({
-          where: {
-            userId,
-            slug,
-            NOT: { id },
-          },
-        })
+        await this.prisma.orm.Collection.where({ userId, slug }).where((c) => c.id.ne(id)).first()
       ) {
         slug = `${baseSlug}-${suffix++}`;
       }
@@ -116,29 +101,35 @@ export class CollectionsService {
       data.description = description;
     }
 
-    return this.prisma.collection.update({
-      where: { id },
-      data,
-      include: {
-        _count: {
-          select: { resources: true },
-        },
-      },
-    });
+    if (Object.keys(data).length === 0) {
+      return this.withResourceCount(collection);
+    }
+
+    const updated = await this.prisma.orm.Collection.where({ id }).update(data);
+    if (!updated) throw new NotFoundException('Collection not found.');
+    return this.withResourceCount(updated);
+  }
+
+  private async withResourceCount(collection: {
+    id: string;
+    [key: string]: unknown;
+  }) {
+    const { total } = await this.prisma.orm.CollectionResource
+      .where({ collectionId: collection.id })
+      .aggregate((a) => ({ total: a.count() }));
+    return { ...collection, _count: { resources: total } };
   }
 
   async remove(id: string, userId: string) {
-    const collection = await this.prisma.collection.findFirst({
-      where: { id, userId },
-    });
+    const collection = await this.prisma.orm.Collection.where({ id, userId }).first();
 
     if (!collection) {
       throw new NotFoundException('Collection not found.');
     }
 
-    return this.prisma.collection.delete({
-      where: { id },
-    });
+    const removed = await this.prisma.orm.Collection.where({ id }).delete();
+    if (!removed) throw new NotFoundException('Collection not found.');
+    return removed;
   }
 
   async addResource(
@@ -146,35 +137,27 @@ export class CollectionsService {
     userId: string,
     addResourceDto: AddResourceDto,
   ) {
-    const collection = await this.prisma.collection.findFirst({
-      where: {
-        id: collectionId,
-        userId,
-      },
-    });
+    const collection = await this.prisma.orm.Collection.where({
+      id: collectionId,
+      userId,
+    }).first();
 
     if (!collection) {
       throw new NotFoundException('Collection not found.');
     }
 
-    const resource = await this.prisma.resource.findUnique({
-      where: {
-        id: addResourceDto.resourceId,
-      },
-    });
+    const resource = await this.prisma.orm.Resource
+      .select('id', 'title', 'url', 'type')
+      .first({ id: addResourceDto.resourceId });
 
     if (!resource) {
       throw new NotFoundException('Resource not found.');
     }
 
-    const existing = await this.prisma.collectionResource.findUnique({
-      where: {
-        collectionId_resourceId: {
-          collectionId,
-          resourceId: addResourceDto.resourceId,
-        },
-      },
-    });
+    const existing = await this.prisma.orm.CollectionResource.where({
+      collectionId,
+      resourceId: addResourceDto.resourceId,
+    }).first();
 
     if (existing) {
       throw new ConflictException(
@@ -182,46 +165,26 @@ export class CollectionsService {
       );
     }
 
-    return this.prisma.collectionResource.create({
-      data: {
-        collection: {
-          connect: { id: collectionId },
-        },
-        resource: {
-          connect: { id: addResourceDto.resourceId },
-        },
-      },
-      include: {
-        resource: {
-          select: {
-            id: true,
-            title: true,
-            url: true,
-            type: true,
-          },
-        },
-      },
+    const created = await this.prisma.orm.CollectionResource.create({
+      collectionId,
+      resourceId: addResourceDto.resourceId,
     });
+
+    return { ...created, resource };
   }
 
   async removeResource(collectionId: string, resourceId: string, userId: string) {
-    const collection = await this.prisma.collection.findFirst({
-      where: { id: collectionId, userId },
-    });
+    const collection = await this.prisma.orm.Collection.where({ id: collectionId, userId }).first();
 
     if (!collection) {
       throw new NotFoundException('Collection not found.');
     }
 
     const collectionResource =
-      await this.prisma.collectionResource.findUnique({
-        where: {
-          collectionId_resourceId: {
-            collectionId,
-            resourceId,
-          },
-        },
-      });
+      await this.prisma.orm.CollectionResource.where({
+        collectionId,
+        resourceId,
+      }).first();
 
     if (!collectionResource) {
       throw new NotFoundException(
@@ -229,46 +192,31 @@ export class CollectionsService {
       );
     }
 
-    return this.prisma.collectionResource.delete({
-      where: {
-        collectionId_resourceId: {
-          collectionId,
-          resourceId,
-        },
-      },
-    });
+    const removed = await this.prisma.orm.CollectionResource.where({
+      collectionId,
+      resourceId,
+    }).delete();
+    if (!removed) throw new NotFoundException('Resource not found in this collection.');
+    return removed;
   }
 
   async findResources(collectionId: string, userId: string) {
-    const collection = await this.prisma.collection.findFirst({
-      where: {
-        id: collectionId,
-        userId,
-      },
-    });
+    const collection = await this.prisma.orm.Collection.where({
+      id: collectionId,
+      userId,
+    }).first();
 
     if (!collection) {
       throw new NotFoundException('Collection not found.');
     }
 
-    return this.prisma.collectionResource.findMany({
-      where: { collectionId },
-      include: {
-        resource: {
-          include: {
-            category: true,
-            tags: {
-              include: {
-                tag: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    return this.prisma.orm.CollectionResource
+      .where({ collectionId })
+      .include('resource', (resource) =>
+        resource.include('category').include('tags', (tags) => tags.include('tag')),
+      )
+      .orderBy((cr) => cr.createdAt.desc())
+      .all();
   }
 
 }

@@ -1,6 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { isUniqueConstraintError, PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
@@ -9,42 +8,27 @@ export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    return this.prisma.category.findMany({
-      include: {
-        parent: true,
-        children: true,
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    });
+    return this.prisma.orm.Category
+      .include('parent')
+      .include('children')
+      .orderBy((c) => c.name.asc())
+      .all();
   }
 
   async create(createCategoryDto: CreateCategoryDto) {
     const { parentId, ...categoryData } = createCategoryDto;
 
     try {
-      return await this.prisma.category.create({
-        data: {
-          ...categoryData,
-          slug: createCategoryDto.name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)/g, ''),
-          parent: parentId
-            ? {
-                connect: {
-                  id: parentId,
-                },
-              }
-            : undefined,
-        },
+      return await this.prisma.orm.Category.create({
+        ...categoryData,
+        slug: createCategoryDto.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, ''),
+        parentId: parentId ?? null,
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if (isUniqueConstraintError(error)) {
         throw new ConflictException(
           'A category with this name already exists.',
         );
@@ -55,10 +39,15 @@ export class CategoriesService {
   }
 
   async update(id: string, dto: UpdateCategoryDto) {
-    const category = await this.prisma.category.findUnique({ where: { id } });
+    const category = await this.prisma.orm.Category.first({ id });
     if (!category) throw new NotFoundException('Category not found.');
 
-    const data: Prisma.CategoryUpdateInput = {
+    const data: {
+      name?: string;
+      slug?: string;
+      description?: string | null;
+      parentId?: string | null;
+    } = {
       ...(dto.name !== undefined
         ? {
             name: dto.name,
@@ -71,18 +60,15 @@ export class CategoriesService {
       ...(dto.description !== undefined ? { description: dto.description } : {}),
     };
     if (dto.parentId !== undefined) {
-      data.parent = dto.parentId
-        ? { connect: { id: dto.parentId } }
-        : { disconnect: true };
+      data.parentId = dto.parentId;
     }
 
+    if (Object.keys(data).length === 0) return category;
+
     try {
-      return await this.prisma.category.update({ where: { id }, data });
+      return await this.prisma.orm.Category.where({ id }).update(data);
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if (isUniqueConstraintError(error)) {
         throw new ConflictException('A category with this name already exists.');
       }
       throw error;
@@ -90,16 +76,8 @@ export class CategoriesService {
   }
 
   async remove(id: string) {
-    try {
-      return await this.prisma.category.delete({ where: { id } });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
-        throw new NotFoundException('Category not found.');
-      }
-      throw error;
-    }
+    const removed = await this.prisma.orm.Category.where({ id }).delete();
+    if (!removed) throw new NotFoundException('Category not found.');
+    return removed;
   }
 }
