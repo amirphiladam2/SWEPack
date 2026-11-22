@@ -19,8 +19,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
     "seed:production": "tsx prisma/seed.ts",
-    "bootstrap:admin": "tsx prisma/seed-admin.ts",
-    "postinstall": "prisma skills sync || exit 0"
+    "bootstrap:admin": "tsx prisma/seed-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -29,8 +28,8 @@
     "@nestjs/passport": "^12.0.0",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/throttler": "^6.7.1",
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.1",
+    "@prisma/orm-postgres": "8.0.0-rc.23",
+    "arktype": "^2.2.10",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -39,7 +38,6 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.23.1",
-    "prisma": "^7.10.1",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.34.1",
     "rxjs": "^7.8.1"
@@ -62,6 +60,7 @@
     "globals": "^16.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
+    "prisma": "8.0.0-rc.33",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
