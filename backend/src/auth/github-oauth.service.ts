@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, isUniqueConstraintError, serviceInput } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 
 type GithubAccessTokenResponse = {
@@ -31,6 +31,19 @@ export class GithubOAuthService {
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
   ) {}
+
+  private credentials() {
+    const input = serviceInput();
+    const clientId = input.githubClientId?.expose();
+    const clientSecret = input.githubClientSecret?.expose();
+    const callbackUrl = input.githubCallbackUrl?.expose();
+    if (!clientId || !clientSecret || !callbackUrl) {
+      throw new ServiceUnavailableException(
+        'GitHub sign-in is not configured yet.',
+      );
+    }
+    return { clientId, clientSecret, callbackUrl };
+  }
 
   async beginLogin() {
     return this.beginFlow('LOGIN');
@@ -76,26 +89,18 @@ export class GithubOAuthService {
   }
 
   private async beginFlow(purpose: 'LOGIN' | 'LINK', userId?: string) {
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const callbackUrl = process.env.GITHUB_CALLBACK_URL;
-    if (!clientId || !process.env.GITHUB_CLIENT_SECRET || !callbackUrl) {
-      throw new ServiceUnavailableException(
-        'GitHub sign-in is not configured yet.',
-      );
-    }
+    const { clientId, callbackUrl } = this.credentials();
 
-    await this.prisma.githubOAuthState.deleteMany({
-      where: { expiresAt: { lte: new Date() } },
-    });
+    await this.prisma.orm.GithubOAuthState
+      .where((state) => state.expiresAt.lte(new Date()))
+      .deleteAll();
 
     const state = randomBytes(32).toString('base64url');
-    await this.prisma.githubOAuthState.create({
-      data: {
-        stateHash: this.hashState(state),
-        purpose,
-        ...(userId ? { userId } : {}),
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      },
+    await this.prisma.orm.GithubOAuthState.create({
+      stateHash: this.hashState(state),
+      purpose,
+      ...(userId ? { userId } : {}),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     });
 
     const authorizationUrl = new URL(
@@ -117,19 +122,20 @@ export class GithubOAuthService {
     }
 
     const stateHash = this.hashState(state);
-    const record = await this.prisma.githubOAuthState.findUnique({
-      where: { stateHash },
-    });
+    const record = await this.prisma.orm.GithubOAuthState
+      .where({ stateHash })
+      .first();
     if (!record || record.expiresAt <= new Date()) {
       throw new UnauthorizedException(
         'The GitHub authorization state is invalid or expired.',
       );
     }
 
-    const consumed = await this.prisma.githubOAuthState.deleteMany({
-      where: { id: record.id, expiresAt: { gt: new Date() } },
-    });
-    if (consumed.count !== 1) {
+    const consumed = await this.prisma.orm.GithubOAuthState
+      .where((row) => row.id.eq(record.id))
+      .where((row) => row.expiresAt.gt(new Date()))
+      .deleteAndCount();
+    if (consumed !== 1) {
       throw new UnauthorizedException(
         'The GitHub authorization state is invalid or expired.',
       );
@@ -142,14 +148,7 @@ export class GithubOAuthService {
   }
 
   private async getGithubIdentity(code: string) {
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-    const callbackUrl = process.env.GITHUB_CALLBACK_URL;
-    if (!clientId || !clientSecret || !callbackUrl) {
-      throw new ServiceUnavailableException(
-        'GitHub sign-in is not configured yet.',
-      );
-    }
+    const { clientId, clientSecret, callbackUrl } = this.credentials();
 
     let tokenResponse: Response;
     try {
@@ -264,7 +263,7 @@ export class GithubOAuthService {
     try {
       emailsBody = await emailsResponse.json();
     } catch {
-      throw new ServiceUnavailableException(
+      throw new UnauthorizedException(
         'GitHub returned invalid verified email details. Please try again.',
       );
     }
@@ -290,15 +289,13 @@ export class GithubOAuthService {
   }
 
   private async findGithubAccount(providerAccountId: string) {
-    return this.prisma.githubAccount.findUnique({
-      where: {
-        provider_providerAccountId: {
-          provider: 'GITHUB',
-          providerAccountId,
-        },
-      },
-      include: { user: true },
-    });
+    return this.prisma.orm.GithubAccount
+      .where({
+        provider: 'GITHUB',
+        providerAccountId,
+      })
+      .include('user')
+      .first();
   }
 
   private async findOrCreateUser(identity: {
@@ -314,10 +311,7 @@ export class GithubOAuthService {
     let email = identity.email;
     if (
       email &&
-      (await this.prisma.user.findUnique({
-        where: { email },
-        select: { id: true },
-      }))
+      (await this.prisma.orm.User.where({ email }).select('id').first())
     ) {
       email = null;
     }
@@ -325,7 +319,7 @@ export class GithubOAuthService {
     try {
       return await this.createGithubUser(identity, email);
     } catch (error) {
-      if (!this.isUniqueConstraintError(error)) throw error;
+      if (!isUniqueConstraintError(error)) throw error;
       const concurrentAccount = await this.findGithubAccount(
         identity.providerAccountId,
       );
@@ -334,7 +328,7 @@ export class GithubOAuthService {
         try {
           return await this.createGithubUser(identity, null);
         } catch (retryError) {
-          if (!this.isUniqueConstraintError(retryError)) throw retryError;
+          if (!isUniqueConstraintError(retryError)) throw retryError;
           const retryAccount = await this.findGithubAccount(
             identity.providerAccountId,
           );
@@ -351,19 +345,19 @@ export class GithubOAuthService {
     identity: { providerAccountId: string; name: string },
     email: string | null,
   ) {
-    return this.prisma.user.create({
-      data: {
+    return this.prisma.transaction(async (tx) => {
+      const user = await tx.orm.public.User.create({
         name: identity.name,
         email,
         password: null,
         role: 'USER',
-        githubAccounts: {
-          create: {
-            provider: 'GITHUB',
-            providerAccountId: identity.providerAccountId,
-          },
-        },
-      },
+      });
+      const account = await tx.orm.public.GithubAccount.create({
+        provider: 'GITHUB',
+        providerAccountId: identity.providerAccountId,
+        userId: user.id,
+      });
+      return { ...user, githubAccounts: [account] };
     });
   }
 
@@ -380,15 +374,13 @@ export class GithubOAuthService {
     }
 
     try {
-      await this.prisma.githubAccount.create({
-        data: {
-          provider: 'GITHUB',
-          providerAccountId: identity.providerAccountId,
-          userId,
-        },
+      await this.prisma.orm.GithubAccount.create({
+        provider: 'GITHUB',
+        providerAccountId: identity.providerAccountId,
+        userId,
       });
     } catch (error) {
-      if (!this.isUniqueConstraintError(error)) throw error;
+      if (!isUniqueConstraintError(error)) throw error;
       const concurrentAccount = await this.findGithubAccount(
         identity.providerAccountId,
       );
@@ -397,14 +389,5 @@ export class GithubOAuthService {
         'This GitHub account is already connected to another SWEPack account.',
       );
     }
-  }
-
-  private isUniqueConstraintError(error: unknown): error is { code: string } {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002'
-    );
   }
 }

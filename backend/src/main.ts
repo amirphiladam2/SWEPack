@@ -1,61 +1,56 @@
-import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { NoCacheInterceptor } from './common/no-cache.interceptor';
+import { serviceInput } from './prisma/prisma.service';
+import service from './prisma/service.mjs';
 import type { Application } from 'express';
 
-function readPort(value: string | undefined) {
-  const port = Number(value ?? 3001);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('PORT must be an integer between 1 and 65535.');
-  }
-  return port;
-}
-
 function validateEnvironment() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is required.');
-  }
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is required.');
-  }
+  const input = serviceInput();
+  const jwtSecret = input.jwtSecret.expose();
+  const frontendUrl = input.frontendUrl.expose();
   if (
     process.env.NODE_ENV === 'production' &&
-    process.env.JWT_SECRET.length < 32
+    jwtSecret.length < 32
   ) {
     throw new Error('JWT_SECRET must be at least 32 characters in production.');
   }
-  if (!process.env.FRONTEND_URL) {
-    throw new Error('FRONTEND_URL is required.');
+  let parsedFrontendUrl: URL;
+  try {
+    parsedFrontendUrl = new URL(frontendUrl);
+  } catch {
+    throw new Error('FRONTEND_URL must be a valid URL.');
   }
-  const frontendUrl = new URL(process.env.FRONTEND_URL);
   if (
-    frontendUrl.pathname !== '/' ||
-    frontendUrl.search ||
-    frontendUrl.hash ||
-    frontendUrl.origin !== process.env.FRONTEND_URL.replace(/\/$/, '')
+    parsedFrontendUrl.pathname !== '/' ||
+    parsedFrontendUrl.search ||
+    parsedFrontendUrl.hash ||
+    parsedFrontendUrl.origin !== frontendUrl.replace(/\/$/, '')
   ) {
     throw new Error('FRONTEND_URL must contain only the frontend origin.');
   }
   if (
     process.env.NODE_ENV === 'production' &&
-    frontendUrl.protocol !== 'https:'
+    parsedFrontendUrl.protocol !== 'https:'
   ) {
     throw new Error('FRONTEND_URL must use HTTPS in production.');
   }
+  const githubClientId = input.githubClientId?.expose();
+  const githubClientSecret = input.githubClientSecret?.expose();
+  const githubCallbackUrl = input.githubCallbackUrl?.expose();
   const githubOAuthValues = [
-    process.env.GITHUB_CLIENT_ID,
-    process.env.GITHUB_CLIENT_SECRET,
-    process.env.GITHUB_CALLBACK_URL,
+    githubClientId,
+    githubClientSecret,
+    githubCallbackUrl,
   ];
   if (githubOAuthValues.some(Boolean) && !githubOAuthValues.every(Boolean)) {
     throw new Error(
       'GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, and GITHUB_CALLBACK_URL must be configured together.',
     );
   }
-  if (process.env.GITHUB_CALLBACK_URL) {
-    const callbackUrl = new URL(process.env.GITHUB_CALLBACK_URL);
+  if (githubCallbackUrl) {
+    const callbackUrl = new URL(githubCallbackUrl);
     if (
       process.env.NODE_ENV === 'production' &&
       callbackUrl.protocol !== 'https:'
@@ -75,7 +70,7 @@ async function bootstrap() {
   }
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL,
+    origin: serviceInput().frontendUrl.expose(),
   });
   app.useGlobalInterceptors(new NoCacheInterceptor());
 
@@ -87,7 +82,7 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(readPort(process.env.PORT));
+  await app.listen(service.port());
 }
 
 void bootstrap();

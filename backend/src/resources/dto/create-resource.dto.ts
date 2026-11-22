@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsArray,IsString, IsUrl, MaxLength } from 'class-validator';
-import { ResourceType } from 'generated/prisma/enums';
+import { ResourceType } from '../../prisma/enums';
 
 export class CreateResourceDto {
   @IsString()
