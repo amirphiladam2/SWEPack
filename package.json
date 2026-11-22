@@ -1,0 +1,37 @@
+{
+  "name": "swepack",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace backend",
+    "test": "npm test --workspace backend -- --runInBand"
+  },
+  "dependencies": {
+    "@prisma/composer": "0.38.0",
+    "@prisma/composer-prisma-cloud": "0.38.0",
+    "@prisma/orm-postgres": "8.0.0-rc.23",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "prisma": "8.0.0-rc.33"
+  },
+  "overrides": {
+    "effect": "4.0.5",
+    "@effect/vitest": "4.0.5",
+    "@effect/platform-bun": "4.0.5",
+    "@effect/platform-node": "4.0.5",
+    "@effect/platform-node-shared": "4.0.5"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "bcrypt@6.0.0": true,
+    "@prisma/engines@7.10.1": true,
+    "@firebase/util@1.15.3": true,
+    "protobufjs@7.6.6": true,
+    "@parcel/watcher@2.6.0": true,
+    "prisma@8.0.0-rc.33": true
+  }
+}
