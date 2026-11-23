@@ -10,18 +10,25 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './dto/roles.guard';
 import { GithubOAuthService } from './github-oauth.service';
 import { FirebaseAdminService } from './firebase-admin.service';
+import { BACKEND_INPUT, backendInput } from '../config';
 
 @Global()
 @Module({
   imports: [
-    JwtModule.register({
-      secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '7d' },
+    JwtModule.registerAsync({
+      inject: [BACKEND_INPUT],
+      useFactory: (input: ReturnType<typeof backendInput>) => ({
+        secret: input.jwtSecret.expose(),
+        signOptions: { expiresIn: '7d' as const },
+      }),
     }),
     PrismaModule,
   ],
-  controllers: [AuthController],
   providers: [
+    {
+      provide: BACKEND_INPUT,
+      useFactory: backendInput,
+    },
     AuthService,
     GithubOAuthService,
     FirebaseAdminService,

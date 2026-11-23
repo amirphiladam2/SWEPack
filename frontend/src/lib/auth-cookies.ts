@@ -1,3 +1,5 @@
+import service from "../../service.mjs";
+
 export const SESSION_COOKIE_NAME = "swepack_session";
 export const GITHUB_STATE_COOKIE_NAME = "swepack_github_state";
 export const GITHUB_LINK_COOKIE_NAME = "swepack_github_link";
@@ -22,26 +24,15 @@ export function clearCookieOptions(path = "/") {
 }
 
 export function backendApiUrl() {
-  const configuredUrl =
-    process.env.NEXT_PUBLIC_API_URL ??
-    (process.env.NODE_ENV === "development"
-      ? "http://localhost:3001"
-      : undefined);
-  if (!configuredUrl) {
-    throw new Error("NEXT_PUBLIC_API_URL is required to reach the backend API.");
-  }
-  const url = new URL(configuredUrl);
-  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
-    throw new Error("NEXT_PUBLIC_API_URL must use HTTPS in production.");
-  }
-  return url.toString().replace(/\/+$/, "");
+  // The backend API's origin comes from the web service's `api` dependency.
+  const { api } = service.load();
+  return api.url.replace(/\/+$/, "");
+}
+
+export function frontendOrigin() {
+  return service.input().frontendUrl;
 }
 
 export function hasExpectedOrigin(request: Request) {
-  const expectedOrigin =
-    process.env.FRONTEND_URL ??
-    (process.env.NODE_ENV === "development"
-      ? "http://localhost:3000"
-      : undefined);
-  return Boolean(expectedOrigin && request.headers.get("origin") === expectedOrigin);
+  return request.headers.get("origin") === frontendOrigin();
 }

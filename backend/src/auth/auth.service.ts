@@ -27,9 +27,9 @@ export class AuthService {
   ) {}
 
   async login({ email, password }: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    const user = await this.prisma.client.orm.public.User
+      .where({ email: email.trim().toLowerCase() })
+      .first();
     if (
       !user ||
       !user.password ||
@@ -49,10 +49,9 @@ export class AuthService {
       displayName: user.name,
     });
     if (user.firebaseUid !== migration.uid) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { firebaseUid: migration.uid },
-      });
+      await this.prisma.client.orm.public.User
+        .where({ id: user.id })
+        .update({ firebaseUid: migration.uid });
     }
 
     return {
@@ -72,9 +71,9 @@ export class AuthService {
       );
     }
 
-    let user = await this.prisma.user.findUnique({
-      where: { firebaseUid: decoded.uid },
-    });
+    let user = await this.prisma.client.orm.public.User
+      .where({ firebaseUid: decoded.uid })
+      .first();
     if (!user) {
       if (decoded.email_verified !== true) {
         throw new UnauthorizedException(
@@ -82,9 +81,9 @@ export class AuthService {
         );
       }
 
-      const existingUser = await this.prisma.user.findUnique({
-        where: { email },
-      });
+      const existingUser = await this.prisma.client.orm.public.User
+        .where({ email })
+        .first();
       if (existingUser) {
         if (
           existingUser.firebaseUid &&
@@ -94,45 +93,48 @@ export class AuthService {
             'This email is linked to a different Firebase account.',
           );
         }
-        user = await this.prisma.user.update({
-          where: { id: existingUser.id },
-          data: {
+        const nextTokenVersion = existingUser.tokenVersion + 1;
+        await this.prisma.client.orm.public.User
+          .where({ id: existingUser.id })
+          .update({
             firebaseUid: decoded.uid,
-            tokenVersion: { increment: 1 },
-          },
-        });
+            tokenVersion: nextTokenVersion,
+          });
+        user = {
+          ...existingUser,
+          firebaseUid: decoded.uid,
+          tokenVersion: nextTokenVersion,
+        };
       } else {
-        user = await this.prisma.user.create({
-          data: {
-            name:
-              typeof decoded.name === 'string' && decoded.name.trim()
-                ? decoded.name.trim().slice(0, 100)
-                : email.split('@')[0],
-            email,
-            firebaseUid: decoded.uid,
-          },
+        user = await this.prisma.client.orm.public.User.create({
+          name:
+            typeof decoded.name === 'string' && decoded.name.trim()
+              ? decoded.name.trim().slice(0, 100)
+              : email.split('@')[0],
+          email,
+          firebaseUid: decoded.uid,
         });
       }
     } else if (decoded.email_verified === true && user.email !== email) {
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { email },
-      });
+      user = await this.prisma.client.orm.public.User
+        .where({ id: user.id })
+        .update({ email })
+        .then((updated) => updated ?? user);
     }
 
     if (user.password) {
-      await this.prisma.$transaction([
-        this.prisma.user.update({
-          where: { id: user.id },
-          data: {
-            password: null,
-            tokenVersion: { increment: 1 },
-          },
-        }),
-        this.prisma.passwordResetToken.deleteMany({
-          where: { userId: user.id },
-        }),
-      ]);
+      await this.prisma.client.transaction(async (tx) => {
+        const current = await tx.orm.public.User
+          .where({ id: user.id })
+          .first();
+        await tx.orm.public.User.where({ id: user.id }).update({
+          password: null,
+          tokenVersion: (current?.tokenVersion ?? 0) + 1,
+        });
+        await tx.orm.public.PasswordResetToken
+          .where({ userId: user.id })
+          .deleteAll();
+      });
       user = {
         ...user,
         password: null,
@@ -170,35 +172,32 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { tokenVersion: { increment: 1 } },
+    await this.prisma.client.transaction(async (tx) => {
+      const current = await tx.orm.public.User.where({ id: userId }).first();
+      await tx.orm.public.User.where({ id: userId }).update({
+        tokenVersion: (current?.tokenVersion ?? 0) + 1,
+      });
     });
     return { message: 'You have been signed out.' };
   }
 
-  getAccountDeletionRequest(userId: string) {
-    return this.prisma.accountDeletionRequest.findUnique({
-      where: { userId },
-      select: {
-        status: true,
-        requestedAt: true,
-      },
-    });
+  async getAccountDeletionRequest(userId: string) {
+    return this.prisma.client.orm.public.AccountDeletionRequest
+      .where({ userId })
+      .select('status', 'requestedAt')
+      .first();
   }
 
   async requestAccountDeletion(userId: string) {
-    const request = await this.prisma.accountDeletionRequest.upsert({
-      where: { userId },
-      update: {},
-      create: { userId },
-      select: {
-        status: true,
-        requestedAt: true,
-      },
-    });
+    const request = await this.prisma.client.orm.public.AccountDeletionRequest
+      .upsert({
+        create: { userId },
+        update: {},
+        conflictOn: { userId },
+      });
     return {
-      ...request,
+      status: request.status,
+      requestedAt: request.requestedAt,
       message:
         'Your account deletion request has been submitted for review. Your account remains active until the review is complete.',
     };
@@ -207,22 +206,20 @@ export class AuthService {
   async forgotPassword({ email }: ForgotPasswordDto) {
     this.assertPasswordRecoveryEnabled();
 
-    const user = await this.prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    const user = await this.prisma.client.orm.public.User
+      .where({ email: email.trim().toLowerCase() })
+      .first();
 
     if (user?.email && user.password) {
       const token = randomBytes(32).toString('hex');
       const tokenHash = createHash('sha256').update(token).digest('hex');
-      await this.prisma.passwordResetToken.deleteMany({
-        where: { userId: user.id },
-      });
-      await this.prisma.passwordResetToken.create({
-        data: {
-          tokenHash,
-          userId: user.id,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-        },
+      await this.prisma.client.orm.public.PasswordResetToken
+        .where({ userId: user.id })
+        .deleteAll();
+      await this.prisma.client.orm.public.PasswordResetToken.create({
+        tokenHash,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
       });
       const sent = await this.emailService.sendPasswordResetEmail(
         user.email,
@@ -243,30 +240,30 @@ export class AuthService {
     this.assertPasswordRecoveryEnabled();
 
     const tokenHash = createHash('sha256').update(token).digest('hex');
-    const resetToken = await this.prisma.passwordResetToken.findUnique({
-      where: { tokenHash },
-    });
+    const resetToken = await this.prisma.client.orm.public.PasswordResetToken
+      .where({ tokenHash })
+      .first();
     if (!resetToken || resetToken.expiresAt <= new Date()) {
       throw new UnauthorizedException(
         'This password reset link is invalid or expired.',
       );
     }
 
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: resetToken.userId },
-        data: {
-          password: await bcrypt.hash(password, 12),
-          tokenVersion: { increment: 1 },
-        },
-      }),
-      this.prisma.passwordResetToken.delete({
-        where: { id: resetToken.id },
-      }),
-      this.prisma.passwordResetToken.deleteMany({
-        where: { userId: resetToken.userId },
-      }),
-    ]);
+    await this.prisma.client.transaction(async (tx) => {
+      const current = await tx.orm.public.User
+        .where({ id: resetToken.userId })
+        .first();
+      await tx.orm.public.User.where({ id: resetToken.userId }).update({
+        password: await bcrypt.hash(password, 12),
+        tokenVersion: (current?.tokenVersion ?? 0) + 1,
+      });
+      await tx.orm.public.PasswordResetToken
+        .where({ id: resetToken.id })
+        .delete();
+      await tx.orm.public.PasswordResetToken
+        .where({ userId: resetToken.userId })
+        .deleteAll();
+    });
 
     return { message: 'Your password has been reset. You can now sign in.' };
   }

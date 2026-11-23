@@ -1,26 +1,31 @@
-import 'dotenv/config';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from 'generated/prisma/client';
+import service from '../../service.mjs';
 
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
-});
+type Db = ReturnType<typeof service.load>['db'];
 
+let cachedDb: Db | undefined;
+
+function loadDb(): Db {
+  cachedDb ??= service.load().db;
+  return cachedDb;
+}
+
+/**
+ * Holds the Prisma ORM 8 client that the Composer service declaration
+ * provides through its `db` dependency (`service.load().db.client`).
+ */
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
-  constructor() {
-    super({ adapter });
+export class PrismaService implements OnModuleInit, OnModuleDestroy {
+  /** The Prisma ORM 8 client, built lazily on first use. */
+  get client() {
+    return loadDb().client;
   }
 
   async onModuleInit() {
-    await this.$connect();
+    // The Prisma 8 client connects lazily; nothing to warm here.
   }
 
   async onModuleDestroy() {
-    await this.$disconnect();
+    await loadDb().client.close();
   }
 }

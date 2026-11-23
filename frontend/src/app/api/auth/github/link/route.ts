@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   backendApiUrl,
+  frontendOrigin,
   GITHUB_LINK_COOKIE_NAME,
   GITHUB_STATE_COOKIE_NAME,
   hasExpectedOrigin,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   backendApiUrl,
+  frontendOrigin,
   clearCookieOptions,
   GITHUB_LINK_COOKIE_NAME,
   GITHUB_STATE_COOKIE_NAME,
@@ -11,17 +12,7 @@ import {
 export const dynamic = "force-dynamic";
 
 function loginRedirect(error: string) {
-  const origin =
-    process.env.FRONTEND_URL ??
-    (process.env.NODE_ENV === "development"
-      ? "http://localhost:3000"
-      : undefined);
-  if (!origin) {
-    return NextResponse.json(
-      { message: "FRONTEND_URL is required for GitHub sign-in." },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
-    );
-  }
+  const origin = frontendOrigin();
   const url = new URL("/login", origin);
   url.searchParams.set("oauth", error);
   const response = NextResponse.redirect(url, 303);

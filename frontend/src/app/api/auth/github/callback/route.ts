@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   backendApiUrl,
+  frontendOrigin,
   clearCookieOptions,
   GITHUB_LINK_COOKIE_NAME,
   GITHUB_STATE_COOKIE_NAME,
