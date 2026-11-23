@@ -9,7 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ResourceType } from 'generated/prisma/enums';
+import { ResourceType } from '../../common/prisma-enums';
 
 export class ResourceQueryDto {
   @IsOptional()

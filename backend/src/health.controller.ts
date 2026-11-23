@@ -8,7 +8,8 @@ export class HealthController {
   @Get()
   async check() {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      const client = this.prisma.client;
+      await client.execute(client.raw.sql`SELECT 1`.affectedCount().build());
       return {
         status: 'ok',
         database: 'ok',

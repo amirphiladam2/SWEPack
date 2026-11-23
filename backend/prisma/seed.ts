@@ -1,6 +1,8 @@
 import 'dotenv/config';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client';
+import postgres from '@prisma/orm-postgres/runtime';
+import { contractFromJson } from '@prisma/orm-postgres/static';
+import type { Contract } from '../src/prisma/contract';
+import contractJson from '../src/prisma/contract.json';
 
 const target = process.env.SEED_TARGET;
 const databaseUrl = process.env.DATABASE_URL;
@@ -36,36 +38,37 @@ function validateProductionTarget() {
 async function seed() {
   validateProductionTarget();
 
-  const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: databaseUrl }),
+  const db = postgres({
+    contract: contractFromJson<Contract>(contractJson),
+    url: databaseUrl!,
   });
 
   try {
-    await prisma.category.upsert({
-      where: { slug: 'frontend' },
-      update: {
-        name: 'Frontend',
-        description:
-          'Frontend development tools, libraries, frameworks, and resources.',
-      },
+    await db.orm.public.Category.upsert({
       create: {
         name: 'Frontend',
         slug: 'frontend',
         description:
           'Frontend development tools, libraries, frameworks, and resources.',
       },
+      update: {
+        name: 'Frontend',
+        description:
+          'Frontend development tools, libraries, frameworks, and resources.',
+      },
+      conflictOn: { slug: 'frontend' },
     });
 
     for (const name of ['Animation', 'React', 'TypeScript', 'UI']) {
       const slug = name.toLowerCase();
-      await prisma.tag.upsert({
-        where: { slug },
-        update: { name },
+      await db.orm.public.Tag.upsert({
         create: { name, slug },
+        update: { name },
+        conflictOn: { slug },
       });
     }
   } finally {
-    await prisma.$disconnect();
+    await db.close();
   }
 }
 

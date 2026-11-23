@@ -6,7 +6,7 @@ import {
   IsUrl,
   MaxLength,
 } from 'class-validator'
-import { ResourceType } from 'generated/prisma/enums';
+import { ResourceType } from '../../common/prisma-enums';
 
 export class UpdateResourceDto {
   @IsOptional()

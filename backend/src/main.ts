@@ -1,40 +1,25 @@
-import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { NoCacheInterceptor } from './common/no-cache.interceptor';
+import service from '../service.mjs';
 import type { Application } from 'express';
 
-function readPort(value: string | undefined) {
-  const port = Number(value ?? 3001);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('PORT must be an integer between 1 and 65535.');
-  }
-  return port;
-}
-
 function validateEnvironment() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is required.');
-  }
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is required.');
-  }
+  const input = service.input();
+  const jwtSecret = input.jwtSecret.expose();
   if (
     process.env.NODE_ENV === 'production' &&
-    process.env.JWT_SECRET.length < 32
+    jwtSecret.length < 32
   ) {
     throw new Error('JWT_SECRET must be at least 32 characters in production.');
   }
-  if (!process.env.FRONTEND_URL) {
-    throw new Error('FRONTEND_URL is required.');
-  }
-  const frontendUrl = new URL(process.env.FRONTEND_URL);
+  const frontendUrl = new URL(input.frontendUrl);
   if (
     frontendUrl.pathname !== '/' ||
     frontendUrl.search ||
     frontendUrl.hash ||
-    frontendUrl.origin !== process.env.FRONTEND_URL.replace(/\/$/, '')
+    frontendUrl.origin !== input.frontendUrl.replace(/\/$/, '')
   ) {
     throw new Error('FRONTEND_URL must contain only the frontend origin.');
   }
@@ -63,10 +48,11 @@ function validateEnvironment() {
       throw new Error('GITHUB_CALLBACK_URL must use HTTPS in production.');
     }
   }
+  return input;
 }
 
 async function bootstrap() {
-  validateEnvironment();
+  const input = validateEnvironment();
   const app = await NestFactory.create(AppModule);
 
   if (process.env.NODE_ENV === 'production') {
@@ -75,7 +61,7 @@ async function bootstrap() {
   }
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL,
+    origin: input.frontendUrl,
   });
   app.useGlobalInterceptors(new NoCacheInterceptor());
 
@@ -87,7 +73,7 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(readPort(process.env.PORT));
+  await app.listen(service.port());
 }
 
 void bootstrap();

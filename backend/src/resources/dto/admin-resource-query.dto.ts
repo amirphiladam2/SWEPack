@@ -8,7 +8,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ResourceStatus } from 'generated/prisma/enums';
+import { ResourceStatus } from '../common/prisma-enums';
 
 export class AdminResourceQueryDto {
   @IsOptional()

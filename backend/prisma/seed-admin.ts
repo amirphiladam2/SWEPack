@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import * as bcrypt from 'bcrypt';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client';
+import postgres from '@prisma/orm-postgres/runtime';
+import { contractFromJson } from '@prisma/orm-postgres/static';
+import type { Contract } from '../src/prisma/contract';
+import contractJson from '../src/prisma/contract.json';
 
 const target = process.env.SEED_TARGET;
 const databaseUrl = process.env.DATABASE_URL;
@@ -40,29 +42,29 @@ function validateInput() {
 
 async function bootstrapAdmin() {
   validateInput();
-  const connectionString = databaseUrl!;
   const adminEmail = email!;
   const adminName = name!;
   const adminPassword = password!;
-  const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+  const db = postgres({
+    contract: contractFromJson<Contract>(contractJson),
+    url: databaseUrl!,
   });
 
   try {
     const passwordHash = await bcrypt.hash(adminPassword, 12);
-    await prisma.user.upsert({
-      where: { email: adminEmail },
-      update: { name: adminName, password: passwordHash, role: 'ADMIN' },
+    await db.orm.public.User.upsert({
       create: {
         name: adminName,
         email: adminEmail,
         password: passwordHash,
         role: 'ADMIN',
       },
+      update: { name: adminName, password: passwordHash, role: 'ADMIN' },
+      conflictOn: { email: adminEmail },
     });
     console.log('Admin bootstrap completed.');
   } finally {
-    await prisma.$disconnect();
+    await db.close();
   }
 }
 
