@@ -6,7 +6,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && mkdir -p dist/src/prisma && cp src/prisma/contract.json dist/src/prisma/contract.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -29,8 +29,8 @@
     "@nestjs/passport": "^12.0.0",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/throttler": "^6.7.1",
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.1",
+    "@prisma/orm-postgres": "8.0.0-rc.23",
+    "arktype": "^2.1.20",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -39,7 +39,6 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.23.1",
-    "prisma": "^7.10.1",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.34.1",
     "rxjs": "^7.8.1"

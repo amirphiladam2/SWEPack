@@ -10,12 +10,13 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './dto/roles.guard';
 import { GithubOAuthService } from './github-oauth.service';
 import { FirebaseAdminService } from './firebase-admin.service';
+import { jwtSecretValue } from '../prisma/runtime';
 
 @Global()
 @Module({
   imports: [
     JwtModule.register({
-      secret: process.env.JWT_SECRET,
+      secret: jwtSecretValue(),
       signOptions: { expiresIn: '7d' },
     }),
     PrismaModule,
