@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-if (process.env.NODE_ENV === "production") {
+if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_API_URL) {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!apiUrl) {
     throw new Error("NEXT_PUBLIC_API_URL is required for production builds.");

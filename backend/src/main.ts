@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { NoCacheInterceptor } from './common/no-cache.interceptor';
+import { frontendUrlValue, initRuntime, jwtSecretValue } from './prisma/runtime';
 import type { Application } from 'express';
 
 function readPort(value: string | undefined) {
@@ -14,33 +15,31 @@ function readPort(value: string | undefined) {
 }
 
 function validateEnvironment() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is required.');
-  }
-  if (!process.env.JWT_SECRET) {
+  if (!jwtSecretValue()) {
     throw new Error('JWT_SECRET is required.');
   }
   if (
     process.env.NODE_ENV === 'production' &&
-    process.env.JWT_SECRET.length < 32
+    (jwtSecretValue() as string).length < 32
   ) {
     throw new Error('JWT_SECRET must be at least 32 characters in production.');
   }
-  if (!process.env.FRONTEND_URL) {
+  const frontendUrl = frontendUrlValue();
+  if (!frontendUrl) {
     throw new Error('FRONTEND_URL is required.');
   }
-  const frontendUrl = new URL(process.env.FRONTEND_URL);
+  const parsedFrontendUrl = new URL(frontendUrl);
   if (
-    frontendUrl.pathname !== '/' ||
-    frontendUrl.search ||
-    frontendUrl.hash ||
-    frontendUrl.origin !== process.env.FRONTEND_URL.replace(/\/$/, '')
+    parsedFrontendUrl.pathname !== '/' ||
+    parsedFrontendUrl.search ||
+    parsedFrontendUrl.hash ||
+    parsedFrontendUrl.origin !== frontendUrl.replace(/\/$/, '')
   ) {
     throw new Error('FRONTEND_URL must contain only the frontend origin.');
   }
   if (
     process.env.NODE_ENV === 'production' &&
-    frontendUrl.protocol !== 'https:'
+    parsedFrontendUrl.protocol !== 'https:'
   ) {
     throw new Error('FRONTEND_URL must use HTTPS in production.');
   }
@@ -66,6 +65,7 @@ function validateEnvironment() {
 }
 
 async function bootstrap() {
+  await initRuntime();
   validateEnvironment();
   const app = await NestFactory.create(AppModule);
 
@@ -75,7 +75,7 @@ async function bootstrap() {
   }
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL,
+    origin: frontendUrlValue(),
   });
   app.useGlobalInterceptors(new NoCacheInterceptor());
 

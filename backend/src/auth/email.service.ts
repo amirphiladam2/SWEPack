@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Resend } from 'resend';
+import { frontendUrlValue } from '../prisma/runtime';
 
 @Injectable()
 export class EmailService {
@@ -9,7 +10,7 @@ export class EmailService {
     : null;
 
   async sendPasswordResetEmail(email: string, token: string) {
-    const frontendUrl = process.env.FRONTEND_URL;
+    const frontendUrl = frontendUrlValue();
     const from = process.env.EMAIL_FROM ?? 'onboarding@resend.dev';
     if (!this.resend || !frontendUrl) {
       this.logger.warn('Password reset email is not configured.');
